@@ -37,17 +37,17 @@ final readonly class Event {
 	/**
 	 * Keys whose values are personal and never needed to act on an event.
 	 */
-	private const PERSONAL = array( 'name', 'phone', 'line1', 'line2', 'postal_code', 'address' );
+	private const array PERSONAL = array( 'name', 'phone', 'line1', 'line2', 'postal_code', 'address' );
 
 	/**
 	 * Sections of an object that describe a person as a whole.
 	 */
-	private const IDENTITY = array( 'customer_details', 'billing_details', 'shipping_details' );
+	private const array IDENTITY = array( 'customer_details', 'billing_details', 'shipping_details' );
 
 	/**
 	 * Fields within those sections that are removed wholesale.
 	 */
-	private const IDENTITY_FIELDS = array( 'address', 'name', 'phone', 'tax_ids' );
+	private const array IDENTITY_FIELDS = array( 'address', 'name', 'phone', 'tax_ids' );
 
 	/**
 	 * @since 1.0.0
@@ -177,7 +177,7 @@ final readonly class Event {
 	 * @return self
 	 */
 	public function for_account( string $account ): self {
-		return new self( $this->id, $this->type, $account, $this->live, $this->created, $this->object, $this->data );
+		return clone( $this, array( 'account' => $account ) );
 	}
 
 	/**

@@ -40,7 +40,7 @@ class Client {
 	/**
 	 * Where the API lives.
 	 */
-	private const BASE = 'https://api.stripe.com/v1';
+	private const string BASE = 'https://api.stripe.com/v1';
 
 	/**
 	 * The Stripe API version every request is pinned to.
@@ -54,7 +54,7 @@ class Client {
 	 *
 	 * @since 1.0.0
 	 */
-	public const API_VERSION = '2026-08-26.dahlia';
+	public const string API_VERSION = '2026-08-26.dahlia';
 
 	/**
 	 * @since 1.0.0
@@ -147,6 +147,7 @@ class Client {
 	 *
 	 * @return array|null The decoded object.
 	 */
+	#[\NoDiscard( 'Null means Stripe did not do it.' )]
 	public function post( string $path, array $params, ?string $account = null ): ?array {
 		return $this->unwrap( $this->http->post(
 			$this->url( $path ),
