@@ -131,4 +131,133 @@ final class ClientTest extends TestCase {
 		$this->assertSame( '', $this->client( $http )->receipt_url( '', 'acct_1' ) );
 		$this->assertCount( 0, $http->requests );
 	}
+
+	/* ─── Structured errors ─── */
+
+	public function test_a_refusal_carries_stripes_error_object(): void {
+		$http = ( new Fake() )->queue( self::json( array( 'error' => array(
+			'type'    => 'invalid_request_error',
+			'code'    => 'resource_missing',
+			'param'   => 'line_items[0][price]',
+			'message' => 'No such price: price_gone',
+		) ), 400 ) );
+
+		try {
+			$this->client( $http )->fetch( 'prices/price_gone' );
+			$this->fail( 'A refusal came back as an answer.' );
+		} catch ( StripeError $e ) {
+			$this->assertSame( 400, $e->status );
+			$this->assertSame( 'invalid_request_error', $e->type() );
+			$this->assertSame( 'resource_missing', $e->code() );
+			$this->assertSame( 'line_items[0][price]', $e->param() );
+			$this->assertSame( 'No such price: price_gone', $e->message() );
+			$this->assertSame( '', $e->decline_code() );
+		}
+	}
+
+	public function test_a_transport_failure_has_no_error_object(): void {
+		$error = StripeError::from_response( 'x', Response::failure( 'Could not resolve host' ) );
+
+		$this->assertSame( array(), $error->error );
+		$this->assertSame( '', $error->code() );
+		$this->assertStringContainsString( 'Could not resolve host', $error->getMessage() );
+	}
+
+	/* ─── attempt() ─── */
+
+	public function test_attempt_returns_the_object(): void {
+		$http = ( new Fake() )->queue( self::json( array( 'id' => 'cs_1', 'url' => 'https://checkout.stripe.com/c/1' ) ) );
+
+		$session = $this->client( $http )->attempt( 'checkout/sessions', array( 'mode' => 'payment' ), 'acct_1' );
+
+		$this->assertSame( 'cs_1', $session['id'] );
+		$this->assertSame( 'mode=payment', $http->requests[0]['body'] );
+		$this->assertSame( 'acct_1', $http->requests[0]['headers']['Stripe-Account'] );
+		$this->assertSame( Client::API_VERSION, $http->requests[0]['headers']['Stripe-Version'] );
+	}
+
+	/**
+	 * The point of attempt(): Stripe's reason survives to the caller.
+	 */
+	public function test_attempt_throws_with_the_reason(): void {
+		$http = ( new Fake() )->queue( self::json( array( 'error' => array( 'code' => 'amount_too_small' ) ), 400 ) );
+
+		try {
+			$session = $this->client( $http )->attempt( 'checkout/sessions', array() );
+			$this->fail( 'Got ' . json_encode( $session ) );
+		} catch ( StripeError $e ) {
+			$this->assertSame( 'amount_too_small', $e->code() );
+			$this->assertSame( 'checkout/sessions', $e->path );
+		}
+	}
+
+	/* ─── Paging ─── */
+
+	/**
+	 * A shop's hundred-and-first price used to vanish: one call, no paging.
+	 */
+	public function test_each_follows_the_cursor_to_the_end(): void {
+		$http = ( new Fake( null ) )
+			->on( 'GET', '*/prices?starting_after=price_2*', self::json( array( 'has_more' => false, 'data' => array( array( 'id' => 'price_3' ) ) ) ) )
+			->on( 'GET', '*/prices?*', self::json( array( 'has_more' => true, 'data' => array( array( 'id' => 'price_1' ), array( 'id' => 'price_2' ) ) ) ) );
+
+		$ids = array_column( $this->client( $http )->fetch_all( 'prices', 'acct_1', array( 'active' => 'true' ) ), 'id' );
+
+		$this->assertSame( array( 'price_1', 'price_2', 'price_3' ), $ids );
+		$this->assertCount( 2, $http->requests );
+		$this->assertStringContainsString( 'active=true', $http->requests[1]['url'], 'Every page keeps the filters.' );
+		$this->assertStringContainsString( 'limit=100', $http->requests[0]['url'] );
+	}
+
+	public function test_a_failed_page_throws_rather_than_answering_half_a_list(): void {
+		$http = ( new Fake( null ) )
+			->on( 'GET', '*/prices?starting_after=*', new Response( false, 500, 'down' ) )
+			->on( 'GET', '*/prices?*', self::json( array( 'has_more' => true, 'data' => array( array( 'id' => 'price_1' ) ) ) ) );
+
+		$this->expectException( StripeError::class );
+
+		$this->client( $http )->fetch_all( 'prices' );
+	}
+
+	/**
+	 * A list that says "more" without moving the cursor would be asked for
+	 * the same page until the page limit.
+	 */
+	public function test_each_stops_when_the_cursor_does_not_move(): void {
+		$http = ( new Fake( self::json( array( 'has_more' => true, 'data' => array() ) ) ) );
+
+		$this->assertSame( array(), $this->client( $http )->fetch_all( 'prices' ) );
+		$this->assertCount( 1, $http->requests );
+	}
+
+	public function test_each_reads_no_more_than_it_is_allowed(): void {
+		$page = 0;
+		$http = ( new Fake( null ) )->on( 'GET', '*', static function () use ( &$page ): Response {
+			++$page;
+
+			return self::json( array( 'has_more' => true, 'data' => array( array( 'id' => 'obj_' . $page ) ) ) );
+		} );
+
+		$this->assertCount( 3, $this->client( $http )->fetch_all( 'customers', null, array(), 3 ) );
+	}
+
+	/* ─── Charges and the portal ─── */
+
+	public function test_the_charge_for_an_intent_is_read_once(): void {
+		$http = ( new Fake() )->on( 'GET', '*/charges?payment_intent=pi_1*', self::json( array( 'data' => array( array( 'id' => 'ch_1', 'billing_details' => array( 'address' => array( 'country' => 'FR' ) ) ) ) ) ) );
+
+		$charge = $this->client( $http )->charge_for_intent( 'pi_1', 'acct_1' );
+
+		$this->assertSame( 'ch_1', $charge['id'] );
+		$this->assertNull( $this->client( new Fake() )->charge_for_intent( '' ) );
+		$this->assertNull( $this->client( ( new Fake() )->queue( self::json( array( 'data' => array() ) ) ) )->charge_for_intent( 'pi_2' ) );
+	}
+
+	public function test_a_portal_session_is_minted_for_a_customer(): void {
+		$http = ( new Fake() )->queue( self::json( array( 'url' => 'https://billing.stripe.com/p/1' ) ) );
+
+		$this->assertSame( 'https://billing.stripe.com/p/1', $this->client( $http )->portal_url( 'cus_1', 'https://example.com/back', 'acct_1' ) );
+		$this->assertSame( 'customer=cus_1&return_url=https%3A%2F%2Fexample.com%2Fback', $http->requests[0]['body'] );
+		$this->assertSame( '', $this->client( new Fake() )->portal_url( '', 'https://example.com' ), 'No customer, no call.' );
+	}
 }
