@@ -109,6 +109,60 @@ final readonly class Event {
 	}
 
 	/**
+	 * Verify a webhook request against several secrets, and say which one
+	 * signed it.
+	 *
+	 * Stripe gives every endpoint its own secret, so one URL registered
+	 * twice — once for the platform's own events, once for connected
+	 * accounts', or once in a sandbox — has several, and which one verifies
+	 * is itself an answer: where the event came from. Tried in the order
+	 * given, so put the common case first and it costs one HMAC; put a
+	 * secret whose label grants less trust last, so a secret shared by
+	 * mistake resolves to the label listed earlier.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param string                    $body      Raw request body.
+	 * @param string                    $header    The Stripe-Signature header.
+	 * @param array<int|string, string> $secrets   Signing secrets keyed by a
+	 *                                             label of the caller's
+	 *                                             choosing. Empty ones are
+	 *                                             skipped.
+	 * @param int                       $tolerance Seconds of clock skew.
+	 * @param int|null                  $now       Current time. For tests.
+	 *
+	 * @return array{0: self, 1: int|string} The event, and the label of the
+	 *                                       secret that verified it.
+	 *
+	 * @throws InvalidEvent When none verifies it — with the first secret's
+	 *                      reason, which with one secret is exactly what
+	 *                      receive() says — or none is configured.
+	 */
+	public static function receive_any(
+		string $body,
+		string $header,
+		#[\SensitiveParameter] array $secrets,
+		int $tolerance = Signature::DEFAULT_TOLERANCE,
+		?int $now = null
+	): array {
+		$failure = null;
+
+		foreach ( $secrets as $label => $secret ) {
+			if ( '' === (string) $secret ) {
+				continue;
+			}
+
+			try {
+				return array( self::receive( $body, $header, (string) $secret, $tolerance, $now ), $label );
+			} catch ( InvalidEvent $e ) {
+				$failure ??= $e;
+			}
+		}
+
+		throw $failure ?? new InvalidEvent( 'No signing secret is configured for this endpoint.' );
+	}
+
+	/**
 	 * Unpack an event without verifying it.
 	 *
 	 * For a payload that was verified when it arrived — a stored one being

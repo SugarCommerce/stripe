@@ -139,4 +139,61 @@ final class EventTest extends TestCase {
 	public function test_redaction_leaves_a_body_it_cannot_read(): void {
 		$this->assertSame( 'not json', Event::redact( 'not json' ) );
 	}
+
+	/* ─── Several secrets ─── */
+
+	public function test_receive_any_says_which_secret_signed_it(): void {
+		$body = self::body();
+
+		[ $event, $label ] = Event::receive_any( $body, self::sign( $body, secret: 'whsec_sandbox' ), array(
+			'platform' => self::SECRET,
+			'sandbox'  => 'whsec_sandbox',
+		), now: self::NOW );
+
+		$this->assertSame( 'evt_1', $event->id );
+		$this->assertSame( 'sandbox', $label );
+	}
+
+	/**
+	 * A secret listed twice resolves to the earlier label, so the one that
+	 * grants less trust belongs last.
+	 */
+	public function test_the_first_secret_that_verifies_wins(): void {
+		$body = self::body();
+
+		[ , $label ] = Event::receive_any( $body, self::sign( $body ), array( 0 => self::SECRET, 'sandbox' => self::SECRET ), now: self::NOW );
+
+		$this->assertSame( 0, $label );
+	}
+
+	public function test_empty_secrets_are_skipped(): void {
+		$body = self::body();
+
+		[ , $label ] = Event::receive_any( $body, self::sign( $body ), array( 'blank' => '', 'real' => self::SECRET ), now: self::NOW );
+
+		$this->assertSame( 'real', $label );
+	}
+
+	/**
+	 * With one secret it refuses exactly as receive() does.
+	 */
+	public function test_receive_any_reports_the_first_refusal(): void {
+		$body   = self::body();
+		$header = self::sign( $body, secret: 'whsec_other' );
+
+		try {
+			Event::receive( $body, $header, self::SECRET, now: self::NOW );
+			$this->fail( 'An unverified body was accepted.' );
+		} catch ( InvalidEvent $single ) {
+			$this->expectExceptionMessage( $single->getMessage() );
+		}
+
+		Event::receive_any( $body, $header, array( self::SECRET, 'whsec_two' ), now: self::NOW );
+	}
+
+	public function test_receive_any_with_no_secrets_refuses(): void {
+		$this->expectException( InvalidEvent::class );
+
+		Event::receive_any( self::body(), 't=1,v1=x', array( '', '' ) );
+	}
 }
