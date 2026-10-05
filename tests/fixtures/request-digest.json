@@ -1,0 +1,63 @@
+{
+    "about": "Shared by sugarcommerce/stripe (RequestDigest) and @arraypress/stripe-app (requestDigest). Produced by PHP rawurlencode, ksort and hash; a mismatch of one character is every signed call refused.",
+    "encode": [
+        {
+            "value": "a b!'()*~é",
+            "encoded": "a%20b%21%27%28%29%2A~%C3%A9"
+        },
+        {
+            "value": "safe-._~AZaz09",
+            "encoded": "safe-._~AZaz09"
+        }
+    ],
+    "queries": [
+        {
+            "query": {
+                "user_id": "usr_1",
+                "account_id": "acct_1",
+                "mode": "test",
+                "product": "prod_A b!"
+            },
+            "canonical": "account_id=acct_1&mode=test&product=prod_A%20b%21&user_id=usr_1"
+        },
+        {
+            "query": {
+                "z": "last",
+                "a": "tab\there",
+                "é": "ünï",
+                "empty": ""
+            },
+            "canonical": "a=tab%09here&empty=&z=last&%C3%A9=%C3%BCn%C3%AF"
+        },
+        {
+            "query": {},
+            "canonical": ""
+        }
+    ],
+    "digests": [
+        {
+            "method": "GET",
+            "path": "/api/previews",
+            "content": "account_id=acct_1&mode=test&product=prod_A%20b%21&user_id=usr_1",
+            "digest": "1452997bdf05e0b312c4b47fbd456008f4852b33451f3c3e2e07ea971b417cbb"
+        },
+        {
+            "method": "POST",
+            "path": "/api/settings",
+            "content": "{\"user_id\":\"usr_1\",\"account_id\":\"acct_1\",\"mode\":\"live\",\"name\":\"Café/Records\"}",
+            "digest": "e6decd51b5be59efe70c7572053d0a4eec22243d103002d00bf7230bc7cb7d47"
+        },
+        {
+            "method": "POST",
+            "path": "/api/keys/create",
+            "content": "{}",
+            "digest": "e4ecc70ed20b1706b0158b5b428d64a621c23d50518a927759f49fc62bc6ae06"
+        },
+        {
+            "method": "GET",
+            "path": "/api/files",
+            "content": "",
+            "digest": "2ac298a38d388955858f7ac10e4546f378e53e376219d12083d83e66cb2e731a"
+        }
+    ]
+}
