@@ -13,7 +13,7 @@ namespace SugarCommerce\Stripe\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use SugarCommerce\Stripe\Client;
+use SugarCommerce\Stripe\{Client, Keyless, Keyring};
 
 /**
  * Class MustCheckTest
@@ -25,17 +25,28 @@ use SugarCommerce\Stripe\Client;
 final class MustCheckTest extends TestCase {
 
 	/**
-	 * @return array<string, array{string}>
+	 * Every class that answers post() or attempt(), including the ones that
+	 * override them: an override without the attribute drops the warning.
+	 *
+	 * @return array<string, array{string, string}>
 	 */
 	public static function methods(): array {
-		return array_combine( array( 'post' ), array_map( static fn ( string $m ): array => array( $m ), array( 'post' ) ) );
+		$cases = array();
+
+		foreach ( array( Client::class, Keyring::class, Keyless::class ) as $class ) {
+			foreach ( array( 'post', 'attempt' ) as $method ) {
+				$cases[ $class . '::' . $method ] = array( $class, $method );
+			}
+		}
+
+		return $cases;
 	}
 
 	#[DataProvider( 'methods' )]
-	public function test_the_result_must_be_used( string $method ): void {
-		$attributes = ( new \ReflectionMethod( Client::class, $method ) )->getAttributes( \NoDiscard::class );
+	public function test_the_result_must_be_used( string $class, string $method ): void {
+		$attributes = ( new \ReflectionMethod( $class, $method ) )->getAttributes( \NoDiscard::class );
 
-		$this->assertCount( 1, $attributes, Client::class . '::' . $method . ' lost #[\NoDiscard].' );
+		$this->assertCount( 1, $attributes, $class . '::' . $method . ' lost #[\NoDiscard].' );
 		$this->assertNotSame( '', $attributes[0]->newInstance()->message, 'Say why it matters.' );
 	}
 }
