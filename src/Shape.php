@@ -27,11 +27,24 @@ namespace SugarCommerce\Stripe;
  *
  * Also here: the reads that are easy to get subtly wrong even where nothing
  * moved — a multi-currency price's amounts, a pay-what-you-want price's
- * bounds.
+ * bounds, an invoice's subscription, a refund that is only partial.
  *
  * @since 1.0.0
  */
 final class Shape {
+
+	/**
+	 * Disabled reasons that mean Stripe rejected the business itself, as
+	 * opposed to waiting for paperwork.
+	 *
+	 * @since 1.2.0
+	 */
+	public const array REJECTED = array(
+		'rejected.fraud',
+		'rejected.terms_of_service',
+		'rejected.listed',
+		'rejected.other',
+	);
 
 	/**
 	 * When a subscription's current period ends.
@@ -199,5 +212,329 @@ final class Shape {
 			'preset'  => isset( $custom['preset'] ) ? (int) $custom['preset'] : null,
 			'maximum' => isset( $custom['maximum'] ) ? (int) $custom['maximum'] : null,
 		);
+	}
+
+	/* ─── Ids and expansion ─── */
+
+	/**
+	 * The id of an expandable field, expanded or not.
+	 *
+	 * Stripe answers `"product": "prod_1"` or `"product": {"id": "prod_1", …}`
+	 * depending on what was asked to be expanded, and a caller that reads
+	 * only one of them gets '' or an "Array to string conversion" for the
+	 * other.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param mixed $field An id, an expanded object, or nothing.
+	 *
+	 * @return string The id, or ''.
+	 */
+	public static function id( mixed $field ): string {
+		if ( is_array( $field ) ) {
+			$field = $field['id'] ?? '';
+		}
+
+		return is_string( $field ) ? $field : '';
+	}
+
+	/* ─── Invoices and subscriptions ─── */
+
+	/**
+	 * The subscription an invoice bills, or ''.
+	 *
+	 * Since dahlia under `parent.subscription_details.subscription`; the
+	 * top-level `subscription` is where earlier versions put it. A handler
+	 * that read only the old field logged every failed renewal as "not a
+	 * subscription".
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $invoice Invoice object.
+	 *
+	 * @return string Subscription id, or ''.
+	 */
+	public static function invoice_subscription( array $invoice ): string {
+		$current = self::id( $invoice['parent']['subscription_details']['subscription'] ?? null );
+
+		return '' !== $current ? $current : self::id( $invoice['subscription'] ?? null );
+	}
+
+	/**
+	 * The price of a subscription's first item, or ''.
+	 *
+	 * For a subscription that is one plan — which is what a platform
+	 * billing its own sellers sells. A subscription of several items has
+	 * several prices; read `items.data` for those.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $subscription Subscription object.
+	 *
+	 * @return string Price id, or ''.
+	 */
+	public static function subscription_price( array $subscription ): string {
+		return self::id( $subscription['items']['data'][0]['price'] ?? null );
+	}
+
+	/* ─── Checkout Sessions ─── */
+
+	/**
+	 * The buyer's email on a Checkout Session, or ''.
+	 *
+	 * `customer_details.email` is what they typed at Checkout;
+	 * `customer_email` is what the session was created with, and the only
+	 * one present on a session that has not completed.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $session Checkout Session.
+	 *
+	 * @return string
+	 */
+	public static function session_email( array $session ): string {
+		$email = $session['customer_details']['email'] ?? $session['customer_email'] ?? '';
+
+		return is_string( $email ) ? trim( $email ) : '';
+	}
+
+	/**
+	 * Whether a completed Checkout Session's money has arrived.
+	 *
+	 * `completed` does not mean paid. A bank debit, a voucher or any
+	 * delayed-notification method completes the session immediately and
+	 * settles days later; `async_payment_succeeded` is the event that says
+	 * it did. A session with nothing to pay — a free trial, a 100% coupon —
+	 * is as paid as it will ever be. A payload with no `payment_status` at
+	 * all predates the field and was paid.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $session Checkout Session.
+	 *
+	 * @return bool
+	 */
+	public static function session_paid( array $session ): bool {
+		return in_array( $session['payment_status'] ?? 'paid', array( 'paid', 'no_payment_required' ), true );
+	}
+
+	/**
+	 * What the buyer typed into one of a session's custom fields, or ''.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array  $session Checkout Session.
+	 * @param string $key     The field's key, as it was created.
+	 *
+	 * @return string The value, trimmed; '' when absent or not a text field.
+	 */
+	public static function custom_field( array $session, string $key ): string {
+		foreach ( (array) ( $session['custom_fields'] ?? array() ) as $field ) {
+			if ( is_array( $field ) && $key === ( $field['key'] ?? null ) ) {
+				$type  = (string) ( $field['type'] ?? 'text' );
+				$value = $field[ $type ]['value'] ?? $field['text']['value'] ?? '';
+
+				return is_scalar( $value ) ? trim( (string) $value ) : '';
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * The buyer's answer to Checkout's marketing-consent checkbox.
+	 *
+	 * Three answers, not two: a buyer who was never shown the box — Stripe
+	 * shows it only where the law asks — has not said no, and a record that
+	 * says they did is wrong in the other direction.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $session Checkout Session.
+	 *
+	 * @return bool|null True for opt-in, false for opt-out, null when not asked.
+	 */
+	public static function promotions_consent( array $session ): ?bool {
+		return match ( $session['consent']['promotions'] ?? null ) {
+			'opt_in'  => true,
+			'opt_out' => false,
+			default   => null,
+		};
+	}
+
+	/* ─── Charges and disputes ─── */
+
+	/**
+	 * Whether a charge has been refunded in full.
+	 *
+	 * `charge.refunded` fires for partial refunds too, so the event alone
+	 * says nothing: a goodwill £1 back is not the sale undone.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $charge Charge object.
+	 *
+	 * @return bool
+	 */
+	public static function fully_refunded( array $charge ): bool {
+		return ! empty( $charge['refunded'] )
+			|| ( isset( $charge['amount'], $charge['amount_refunded'] ) && (int) $charge['amount_refunded'] >= (int) $charge['amount'] );
+	}
+
+	/**
+	 * Whether a dispute is an inquiry rather than a chargeback.
+	 *
+	 * The `warning_*` statuses are the card network asking a question; most
+	 * close with no money moving. Treating one as a chargeback punishes a
+	 * buyer who did nothing but ask their bank.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $dispute Dispute object.
+	 *
+	 * @return bool
+	 */
+	public static function dispute_is_inquiry( array $dispute ): bool {
+		return str_starts_with( (string) ( $dispute['status'] ?? '' ), 'warning_' );
+	}
+
+	/* ─── Connected accounts ─── */
+
+	/**
+	 * Why Stripe disabled an account, or null when it has not.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $account Account object.
+	 *
+	 * @return string|null E.g. `requirements.past_due`, `rejected.fraud`.
+	 */
+	public static function account_disabled_reason( array $account ): ?string {
+		$reason = $account['requirements']['disabled_reason'] ?? null;
+
+		return is_string( $reason ) && '' !== $reason ? $reason : null;
+	}
+
+	/**
+	 * Whether Stripe rejected the business — fraud, its terms, a listed
+	 * party — rather than pausing it over overdue paperwork.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $account Account object.
+	 *
+	 * @return bool
+	 */
+	public static function account_rejected( array $account ): bool {
+		return in_array( self::account_disabled_reason( $account ), self::REJECTED, true );
+	}
+
+	/* ─── Entitlements ─── */
+
+	/**
+	 * The feature behind an active entitlement.
+	 *
+	 * `feature` is an id unless `data.feature` was expanded, and only the
+	 * expanded form has a name.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $entitlement Active entitlement object.
+	 *
+	 * @return array{id: string, name: string, lookup_key: string}
+	 */
+	public static function entitlement_feature( array $entitlement ): array {
+		$feature = $entitlement['feature'] ?? '';
+
+		return array(
+			'id'         => self::id( $feature ),
+			'name'       => is_array( $feature ) ? (string) ( $feature['name'] ?? '' ) : '',
+			'lookup_key' => (string) ( $entitlement['lookup_key'] ?? ( is_array( $feature ) ? ( $feature['lookup_key'] ?? '' ) : '' ) ),
+		);
+	}
+
+	/* ─── Prices ─── */
+
+	/**
+	 * A price, flattened into what a page and the cart rules read.
+	 *
+	 * One shape for every caller, because two shapes of one price are two
+	 * answers to "can these be bought together?" — and a hand copy of this
+	 * array in a script had drifted, leaving out tiers and currencies.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $price Price object, with `currency_options` and `tiers`
+	 *                     expanded where possible.
+	 *
+	 * @return array{id: string, nickname: string, amount: int|null, currency: string, recurring: string, interval_count: int, usage: string, tiered: bool, tiers_mode: string, tiers: array, currencies: string[], amounts: array<string, int>, custom: array|null}
+	 */
+	public static function price( array $price ): array {
+		return array(
+			'id'             => (string) ( $price['id'] ?? '' ),
+			'nickname'       => (string) ( $price['nickname'] ?? '' ),
+			'amount'         => isset( $price['unit_amount'] ) ? (int) $price['unit_amount'] : null,
+			'currency'       => strtolower( (string) ( $price['currency'] ?? '' ) ),
+			'recurring'      => isset( $price['recurring']['interval'] ) ? (string) $price['recurring']['interval'] : '',
+			// Every three months is not every month. Stripe refuses a
+			// subscription whose items renew on different schedules, and
+			// the interval alone cannot tell them apart.
+			'interval_count' => max( 1, (int) ( $price['recurring']['interval_count'] ?? 1 ) ),
+			// Metered prices bill for usage reported later, so a cart has
+			// to be able to see them to refuse them.
+			'usage'          => (string) ( $price['recurring']['usage_type'] ?? 'licensed' ),
+			'tiered'         => 'tiered' === ( $price['billing_scheme'] ?? '' ),
+			'tiers_mode'     => (string) ( $price['tiers_mode'] ?? '' ),
+			'tiers'          => self::tiers( (array) ( $price['tiers'] ?? array() ) ),
+			// Not the keys of `amounts`: a pay-what-you-want or tiered price
+			// has no fixed amount in any currency and can be charged in all
+			// of its own.
+			'currencies'     => self::currencies( $price ),
+			'amounts'        => self::amounts( $price ),
+			'custom'         => self::custom_amount( $price ),
+		);
+	}
+
+	/**
+	 * A tiered price's steps, in order, as a page can print them.
+	 *
+	 * `up_to` null is Stripe's "and everything above". The integer fields
+	 * only: Stripe returns them beside the decimal ones, rounded to a minor
+	 * unit, which is as precise as a page needs to be.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $tiers Stripe tiers, from a price with `tiers` expanded.
+	 *
+	 * @return array<int, array{up_to: int|null, unit: int|null, flat: int|null}>
+	 */
+	public static function tiers( array $tiers ): array {
+		return array_values( array_map(
+			static fn( array $tier ): array => array(
+				'up_to' => isset( $tier['up_to'] ) ? (int) $tier['up_to'] : null,
+				'unit'  => isset( $tier['unit_amount'] ) ? (int) $tier['unit_amount'] : null,
+				'flat'  => isset( $tier['flat_amount'] ) ? (int) $tier['flat_amount'] : null,
+			),
+			array_filter( $tiers, 'is_array' )
+		) );
+	}
+
+	/**
+	 * The currencies a price can be charged in, lower case, its own first.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param array $price Price object, ideally with currency_options expanded.
+	 *
+	 * @return string[]
+	 */
+	public static function currencies( array $price ): array {
+		$codes = array( strtolower( (string) ( $price['currency'] ?? '' ) ) );
+
+		foreach ( array_keys( (array) ( $price['currency_options'] ?? array() ) ) as $code ) {
+			$codes[] = strtolower( (string) $code );
+		}
+
+		return array_values( array_unique( array_filter( $codes ) ) );
 	}
 }
