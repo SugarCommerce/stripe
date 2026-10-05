@@ -10,15 +10,26 @@ A platform that calls a handful of Stripe endpoints does not need the official S
 - **Fields that move.** When the pinned version passed `2025-03-31.basil`, `current_period_end` left the subscription for its items and read as `null`. Nothing failed; grace windows and lapse sweeps just switched off.
 - **The envelope is forgotten.** `account` is the only thing telling a connected account's event from the platform's own, and `created` is the only defence against Stripe's out-of-order delivery.
 - **Payloads kept verbatim.** Stored events are useful for replay and carry names, addresses, phone numbers and tax ids nobody needed.
+- **The first page read as the whole list.** One `GET prices?limit=100` was a shop's whole catalogue, and the hundred-and-first price silently vanished.
+- **One key for two modes.** A live key cannot read a test checkout; a platform with one key fails every call for the other mode, and an account installed in a Stripe sandbox needs the sandbox's key.
+- **Stripe's reason thrown away.** `post()` answering `null` is right until a buyer is looking at the result and Stripe said exactly which item it would not take.
+- **Cart rules learned from Stripe's error.** One currency, one renewal schedule, item limits, pay-what-you-want alone — a buyer should read that before a session is created, not after.
 
 ## Features
 
 - 📌 **Pinned** — every request sends `Stripe-Version: Client::API_VERSION`.
 - 🏢 **Connect-first** — pass an account id and the request is made as that account.
-- 💥 **`fetch()` throws** — `StripeError` with the path and status; `get()`/`post()` answer `null` where a fallback is fine.
-- ✍️ **`Event::receive()`** — verifies `Stripe-Signature` (HMAC + replay window, via `sugarcommerce/webhooks`) and unpacks id, type, account, mode, created and object.
+- 💥 **`fetch()` and `attempt()` throw** — `StripeError` with the path, status and Stripe's parsed `error` (`code()`, `param()`, `type()`, `decline_code()`, `message()`); `get()`/`post()` answer `null` where a fallback is fine.
+- 📚 **`each()` / `fetch_all()`** — every object in a list, following `has_more` with `starting_after`; a failed page throws rather than answering half a list.
+- 🧾 **`charge_for_intent()`, `receipt_url()`, `portal_url()`** — one charge read for the receipt and the billing details; a billing portal session on request.
+- 🔑 **`Keyring`** — a client per mode (and the managed sandbox's), picked per call with `Keyring::pick()`; `Keyring::key_mode()` reads a key's mode from its prefix. **`Keyless`** refuses every call without making it, saying which key is missing.
+- ✍️ **`Event::receive()` / `receive_any()`** — verifies `Stripe-Signature` (HMAC + replay window, via `sugarcommerce/webhooks`) against one secret or several, says which one signed it, and unpacks id, type, account, mode, created and object.
 - 🙈 **`Event::redact()`** — strips name, phone, address and tax ids; keeps email.
-- 🧭 **`Shape`** — `period_end()`, `invoice_line_price()`, `invoice_line_product()`, `invoice_payment_intents()`, `amounts()`, `custom_amount()`: current location first, pre-basil second.
+- 🧭 **`Shape`** — reads for fields that move or are easy to misread: `period_end()`, `invoice_subscription()`, `invoice_line_price()`, `invoice_line_product()`, `invoice_payment_intents()`, `subscription_price()`, `session_email()`, `session_paid()`, `custom_field()`, `promotions_consent()`, `fully_refunded()`, `dispute_is_inquiry()`, `account_disabled_reason()`, `account_rejected()`, `entitlement_feature()`, `id()`, and a flat `price()` (with `tiers()`, `currencies()`, `amounts()`, `custom_amount()`).
+- 🛒 **`Cart`** — Stripe Checkout's item rules as codes, an application's own rule beside them, optional extras that Stripe will accept, `line_items()` and the `customer_params()` each mode takes.
+- 🚫 **`Refusal::classify()`** — what Stripe refused, as a reason and a status an application can put into words.
+- 🔁 **`SubscriptionStatus`** — Stripe's eight statuses sorted into running, paid, lapsed and ended, with `access_until()`.
+- 🔏 **`RequestDigest` and `AppSignature`** — verify a Stripe App's signed request, bound to its route and body, with the digest `@arraypress/stripe-app` builds in the browser.
 
 ## Requirements
 
@@ -45,7 +56,80 @@ try {
 } catch ( StripeError $e ) {
     http_response_code( 500 ); // Stripe will retry
 }
+
+// Every page of a list, not the first hundred.
+$all = $stripe->fetch_all( 'prices', 'acct_123', array( 'active' => 'true', 'expand' => array( 'data.product' ) ) );
+
+// A write where Stripe's reason matters.
+try {
+    $session = $stripe->attempt( 'checkout/sessions', $params, 'acct_123' );
+} catch ( StripeError $e ) {
+    $e->code();   // 'resource_missing'
+    $e->param();  // 'line_items[0][price]'
+}
 ```
+
+## One key per mode
+
+```php
+use SugarCommerce\Stripe\Keyring;
+
+$stripe = Keyring::from_keys(
+    live: $live_key,
+    test: $test_key,
+    sandbox: $sandbox_key,
+    sandboxed: fn ( string $account ): bool => $installs->is_sandbox( $account ),
+);
+
+Keyring::pick( $stripe, $event->mode(), $event->account )->session_line_items( $id, $event->account );
+Keyring::key_mode( 'rk_live_…' ); // 'live'
+```
+
+A mode with no key is a `Keyless`: reads that may fail answer `null`, reads that must succeed throw, and nothing is sent to Stripe with an empty bearer.
+
+## Checkout carts
+
+```php
+use SugarCommerce\Stripe\{Cart, Refusal, Shape};
+
+$cart    = new Cart( fn ( array $price ): ?string => 0 === $price['amount'] ? 'free' : null );
+$checked = $cart->check( array_map( Shape::price( ... ), $prices ), 'gbp' );
+
+if ( ! $checked['ok'] ) {
+    echo $words[ $checked['code'] ]; // 'currency', 'interval', 'too_many', 'custom_alone', 'metered', 'free'…
+}
+
+$params = Cart::line_items( $checked['prices'] ) + Cart::customer_params( $email, 'subscription' === $checked['mode'] );
+
+try {
+    $session = $stripe->attempt( 'checkout/sessions', $params, $account );
+} catch ( StripeError $e ) {
+    [ 'reason' => $reason, 'status' => $status ] = Refusal::classify( $e ); // 'tax_not_ready', 503
+}
+```
+
+## Subscription standing
+
+```php
+use SugarCommerce\Stripe\SubscriptionStatus;
+
+$status = SubscriptionStatus::of( $subscription['status'] );
+$status?->lapsed();                                   // unpaid, paused
+$status?->access_until( Shape::period_end( $subscription ) );
+SubscriptionStatus::ENDED;                            // for SQL: canceled, incomplete_expired
+```
+
+## Stripe App requests
+
+```php
+use SugarCommerce\Stripe\{AppSignature, RequestDigest};
+
+$digest = RequestDigest::of_request( $method, $path, $query, $body );
+$proof  = AppSignature::proof( $signature_header, $app_secret, $user_id, $account_id, array( 'request' => $digest ) );
+// '' when it does not verify; otherwise "{timestamp}.{v1}", stable enough to spend once.
+```
+
+The browser half is [`@arraypress/stripe-app`](https://github.com/arraypress/stripe-app); both are tested against `tests/fixtures/request-digest.json`.
 
 ## Receiving webhooks
 
@@ -66,11 +150,20 @@ $event->created;      // compare before applying an update
 $event->object;       // data.object
 
 $store( Event::redact( $body ) );
+
+// One URL registered as several endpoints: which secret verified it says where it came from.
+[ $event, $from ] = Event::receive_any( $body, $header, array( 'platform' => $ours, 'sandbox' => $sandbox_secret ) );
 ```
 
 ## Testing
 
-Pass `SugarCommerce\HttpClient\Fake` as the client's HTTP client:
+```bash
+composer test
+```
+
+153 tests: the client (pinning, Connect headers, structured errors, `attempt()`, paging and its failure and runaway cases, charges, the portal), events (verification, several secrets, redaction), every `Shape` read in its current and pre-basil location, the keyring and keyless refusals, every subscription status, the cart rules and extras, refusal classification, the shared request-digest vectors and app signatures, and that every must-check result keeps `#[\NoDiscard]`.
+
+In your own tests, pass `SugarCommerce\HttpClient\Fake` as the client's HTTP client:
 
 ```php
 $http   = ( new Fake() )->on( 'GET', 'https://api.stripe.com/v1/charges*', new Response( true, 200, '{"data":[]}' ) );
