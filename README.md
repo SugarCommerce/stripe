@@ -15,6 +15,7 @@ A platform that calls a handful of Stripe endpoints does not need the official S
 - **Stripe's reason thrown away.** `post()` answering `null` is right until a buyer is looking at the result and Stripe said exactly which item it would not take.
 - **One install, two events.** Since `2026-09-30.endive` Stripe announces an app install as `account.application.authorized` *and* `apps.install.created` (`app.install.*` on older endpoints) — two ids, so event-id idempotency lets both through, and a handler that treats each as news records the install twice.
 - **A version split that removes a value.** Endive reports a platform's rejection as `rejected.platform_fraud`, not `rejected.fraud`; a list of rejection reasons written before it stops matching without an error.
+- **Half of Managed Payments.** `managed_payments[enabled]` makes Stripe the merchant of record, and a request that still sends `automatic_tax`, `tax_id_collection`, `invoice_creation`, `customer_update[address]` or a dozen others is refused whole — and the lists differ between Checkout Sessions and Payment Links.
 - **Cart rules learned from Stripe's error.** One currency, one renewal schedule, item limits, pay-what-you-want alone — a buyer should read that before a session is created, not after.
 
 ## Features
@@ -30,6 +31,7 @@ A platform that calls a handful of Stripe endpoints does not need the official S
 - 🧭 **`Shape`** — reads for fields that move or are easy to misread: `period_end()`, `invoice_subscription()`, `invoice_line_price()`, `invoice_line_product()`, `invoice_payment_intents()`, `subscription_price()`, `session_email()`, `session_paid()`, `custom_field()`, `promotions_consent()`, `fully_refunded()`, `dispute_is_inquiry()`, `account_disabled_reason()`, `account_rejected()` (Stripe's rejections and, since endive, a platform's: `Shape::PLATFORM_REJECTED`), `entitlement_feature()`, `id()`, and a flat `price()` (with `tiers()`, `currencies()`, `amounts()`, `custom_amount()`).
 - 🛒 **`Cart`** — Stripe Checkout's item rules as codes, an application's own rule beside them, optional extras that Stripe will accept, `line_items()` and the `customer_params()` each mode takes.
 - 🚫 **`Refusal::classify()`** — what Stripe refused, as a reason and a status an application can put into words.
+- 🧾 **`ManagedPayments`** — Stripe as merchant of record: `session()` and `link()` add `managed_payments[enabled]` and take out every parameter Stripe refuses beside it, `eligible()` checks a product's tax code against `ELIGIBLE_TAX_CODES`, and `unsupported()` names any refused parameter a request still carries.
 - 📲 **`AppInstall::of()`** — `Installed`, `Uninstalled` or `null` for any event, reading `account.application.*`, `apps.install.*` and the pre-endive `app.install.*` alike, and only an Install whose status is `installed` as an install; `AppInstall::TYPES` lists them for a dispatch.
 - 🔁 **`SubscriptionStatus`** — Stripe's eight statuses sorted into running, paid, lapsed and ended, with `access_until()`.
 - 🔏 **`RequestDigest` and `AppSignature`** — verify a Stripe App's signed request, bound to its route and body, with the digest `@arraypress/stripe-app` builds in the browser.
@@ -110,6 +112,23 @@ try {
     [ 'reason' => $reason, 'status' => $status ] = Refusal::classify( $e ); // 'tax_not_ready', 503
 }
 ```
+
+## Managed Payments
+
+```php
+use SugarCommerce\Stripe\{ManagedPayments, Refusal};
+
+// The same parameters you would send anyway; the refused ones come out.
+$params = ManagedPayments::session( $params ); // + managed_payments[enabled]=true
+$link   = ManagedPayments::link( $link_params ); // its own list: custom_text too
+
+ManagedPayments::eligible( $product['tax_code'] );          // txcd_10401100 → true
+ManagedPayments::unsupported( $params, ManagedPayments::SESSION_UNSUPPORTED ); // [] — assert it in a test
+
+Refusal::classify( $e )['reason']; // 'tax_code' (a product without an eligible code), 'managed_payments' (not enabled, terms, account)
+```
+
+The account turns it on in its Dashboard (Settings → Managed Payments) and accepts the terms; each product needs a tax code from `ELIGIBLE_TAX_CODES` (digital goods and services). It is for direct integrations: Stripe does not support it for Connect platforms — application fees, transfers, `on_behalf_of` — or accounts a platform controls, so neither list has a way to add those back. Promotion codes, custom fields, consent collection and the recovery of an expired session are not on Stripe's lists and pass through. The lists are Stripe's as published on 7 October 2026; check [update-checkout](https://docs.stripe.com/payments/managed-payments/update-checkout) and [use-payment-links](https://docs.stripe.com/payments/managed-payments/use-payment-links) when bumping the API version.
 
 ## Subscription standing
 

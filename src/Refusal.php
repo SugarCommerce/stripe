@@ -18,7 +18,8 @@ namespace SugarCommerce\Stripe;
  * The net under Cart. Cart checks everything Stripe is known to refuse
  * before Stripe is asked; this sorts what gets through anyway — a price
  * archived a minute ago, a seller who switched on tax collection before
- * setting Stripe Tax up, a rule Stripe adds next year — into a reason an
+ * setting Stripe Tax up, a product sold with Managed Payments that has no
+ * eligible tax code, a rule Stripe adds next year — into a reason an
  * application can put into words, and the HTTP status that fits it.
  *
  * Matched on Stripe's `code` and `param` first and its message second,
@@ -47,6 +48,13 @@ final readonly class Refusal {
 		// Stripe Tax — so it is caught before the rule below reads it as
 		// tax that was never set up.
 		array( '/failed_tax_calculation/', self::UNKNOWN, 502 ),
+		// Managed Payments, since 1.4.0. Before the Stripe Tax rule, whose
+		// words a Managed Payments refusal can share. A product without an
+		// eligible tax code is the seller's to fix on that product; anything
+		// else naming it — not switched on, terms not accepted, an account
+		// Stripe will not take — is the seller's to fix in their settings.
+		array( '/tax[_ ]code|product\b[^.]*\b(?:not |in)eligible[^.]*managed[_ ]payments/i', 'tax_code', 503 ),
+		array( '/managed[_ ]payments/i', 'managed_payments', 503 ),
 		array( '/automatic_tax|stripe tax|tax settings|origin address|head office/i', 'tax_not_ready', 503 ),
 		array( '/amount_too_small|amount must (?:be at least|convert to at least)/i', 'amount_too_small', 422 ),
 		array( '/resource_missing.*price|no such price|price.*(inactive|not active|archived)|product.*(inactive|not active|archived)/i', 'unavailable', 422 ),
