@@ -27,7 +27,9 @@ namespace SugarCommerce\Stripe;
  * - **paid**: access is due in full. Not `past_due`: becoming past due is
  *   not a reason to give anything back.
  * - **lapsed**: stopped for now, and paying again undoes it. `unpaid` is
- *   dunning given up; `paused` is a trial that ended without a card.
+ *   dunning given up; `paused` is a trial that ended without a card, or,
+ *   since 2026-09-30.endive, a subscription paused on demand or after a
+ *   failed payment — none of which is being paid for while it lasts.
  * - **ended**: never coming back. A cancelled subscription is not resumed —
  *   the customer subscribes again, which is a new subscription — and
  *   `incomplete_expired` never took a first payment.

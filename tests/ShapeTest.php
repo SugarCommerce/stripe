@@ -192,6 +192,21 @@ final class ShapeTest extends TestCase {
 		$this->assertNull( Shape::account_disabled_reason( array( 'requirements' => array( 'disabled_reason' => '' ) ) ) );
 	}
 
+	/**
+	 * Since endive a platform's rejection has its own values, which read as
+	 * `rejected.fraud` and the rest before. Missing them would stop seeing
+	 * those rejections at the version bump, without an error.
+	 */
+	public function test_a_platform_rejection_is_still_a_rejection(): void {
+		foreach ( array( 'rejected.platform_fraud', 'rejected.platform_terms_of_service', 'rejected.platform_other' ) as $reason ) {
+			$this->assertTrue( Shape::account_rejected( array( 'requirements' => array( 'disabled_reason' => $reason ) ) ), $reason );
+			$this->assertContains( $reason, Shape::PLATFORM_REJECTED );
+		}
+
+		$this->assertSame( array(), array_diff( Shape::PLATFORM_REJECTED, Shape::REJECTED ) );
+		$this->assertNotContains( 'rejected.fraud', Shape::PLATFORM_REJECTED, 'Stripe\'s own rejection is not a platform\'s.' );
+	}
+
 	public function test_an_entitlement_feature_is_read_expanded_or_not(): void {
 		$this->assertSame(
 			array( 'id' => 'feat_1', 'name' => 'Pro', 'lookup_key' => 'pro' ),

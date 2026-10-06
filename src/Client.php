@@ -59,11 +59,14 @@ class Client {
 	 * deployment. Shape reads fields where this version puts them. Anything
 	 * else talking to Stripe for the same application — a Stripe App's
 	 * front end, say — should declare the same one, or two halves of one
-	 * feature see different shapes of the same object.
+	 * feature see different shapes of the same object. So should the
+	 * application's webhook endpoints: an event is shaped by the endpoint's
+	 * version, not by this one, and the Stripe Apps install events are even
+	 * named differently either side of 2026-09-30.endive (see AppInstall).
 	 *
 	 * @since 1.0.0
 	 */
-	public const string API_VERSION = '2026-08-26.dahlia';
+	public const string API_VERSION = '2026-09-30.endive';
 
 	/**
 	 * @since 1.0.0

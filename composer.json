@@ -1,6 +1,6 @@
 {
   "name": "sugarcommerce/stripe",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A small Stripe client for Connect platforms: pinned API version, Stripe-Account per request, a fetch that throws instead of answering null, signed event parsing with payload redaction, and readers for the fields Stripe moves between API versions.",
   "type": "library",
   "license": "GPL-2.0-or-later",

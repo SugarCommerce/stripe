@@ -57,6 +57,15 @@ final class ClientTest extends TestCase {
 		$this->assertArrayNotHasKey( 'Stripe-Account', $headers, 'A platform request names no account.' );
 	}
 
+	/**
+	 * The version every Shape read, the Stripe App's front end and the
+	 * application's webhook endpoints are written against. A change here is
+	 * a migration, not a constant: this test makes it a deliberate one.
+	 */
+	public function test_the_pinned_version_is_endive(): void {
+		$this->assertSame( '2026-09-30.endive', Client::API_VERSION );
+	}
+
 	public function test_a_connected_account_is_named_in_a_header(): void {
 		$http = new Fake();
 

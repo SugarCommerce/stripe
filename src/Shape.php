@@ -34,16 +34,40 @@ namespace SugarCommerce\Stripe;
 final class Shape {
 
 	/**
-	 * Disabled reasons that mean Stripe rejected the business itself, as
+	 * Disabled reasons that mean the business itself was rejected, as
 	 * opposed to waiting for paperwork.
 	 *
+	 * The `platform_` three are the same rejections made by a Connect
+	 * platform rather than by Stripe. Before 2026-09-30.endive they read as
+	 * `rejected.fraud`, `rejected.terms_of_service` and `rejected.other`, so
+	 * a list without them would quietly stop seeing rejections the moment
+	 * the pinned version passed endive. Kept in one list because that is
+	 * what every reader of the old values was already treating as one;
+	 * PLATFORM_REJECTED is there for a reader that wants to tell them apart.
+	 *
 	 * @since 1.2.0
+	 * @since 1.3.0 Includes the platform rejections endive split out.
 	 */
 	public const array REJECTED = array(
 		'rejected.fraud',
 		'rejected.terms_of_service',
 		'rejected.listed',
 		'rejected.other',
+		'rejected.platform_fraud',
+		'rejected.platform_terms_of_service',
+		'rejected.platform_other',
+	);
+
+	/**
+	 * Disabled reasons for a rejection made by a Connect platform, not by
+	 * Stripe. Only distinguishable since 2026-09-30.endive.
+	 *
+	 * @since 1.3.0
+	 */
+	public const array PLATFORM_REJECTED = array(
+		'rejected.platform_fraud',
+		'rejected.platform_terms_of_service',
+		'rejected.platform_other',
 	);
 
 	/**
@@ -416,8 +440,9 @@ final class Shape {
 	}
 
 	/**
-	 * Whether Stripe rejected the business — fraud, its terms, a listed
-	 * party — rather than pausing it over overdue paperwork.
+	 * Whether the business was rejected — fraud, the terms, a listed party,
+	 * by Stripe or by a platform the account belongs to — rather than paused
+	 * over overdue paperwork.
 	 *
 	 * @since 1.2.0
 	 *

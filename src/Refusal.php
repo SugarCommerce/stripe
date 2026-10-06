@@ -42,6 +42,11 @@ final readonly class Refusal {
 	 * @var array<int, array{0: string, 1: string, 2: int}>
 	 */
 	public const array RULES = array(
+		// Stripe failing to calculate tax, since 2026-09-30.endive: its
+		// own fault, not the seller's settings, and its message can name
+		// Stripe Tax — so it is caught before the rule below reads it as
+		// tax that was never set up.
+		array( '/failed_tax_calculation/', self::UNKNOWN, 502 ),
 		array( '/automatic_tax|stripe tax|tax settings|origin address|head office/i', 'tax_not_ready', 503 ),
 		array( '/amount_too_small|amount must (?:be at least|convert to at least)/i', 'amount_too_small', 422 ),
 		array( '/resource_missing.*price|no such price|price.*(inactive|not active|archived)|product.*(inactive|not active|archived)/i', 'unavailable', 422 ),

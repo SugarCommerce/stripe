@@ -38,6 +38,7 @@ final class RefusalTest extends TestCase {
 			'coupon'           => array( array( 'param' => 'discounts[0][coupon]' ), 'promotion', 422 ),
 			'too many'         => array( array( 'param' => 'line_items', 'message' => 'Too many line items.' ), 'too_many', 422 ),
 			'customer'         => array( array( 'message' => 'No such customer: cus_x' ), 'customer', 422 ),
+			'tax failed'       => array( array( 'code' => 'failed_tax_calculation', 'message' => 'Stripe Tax could not calculate tax for this payment.' ), Refusal::UNKNOWN, 502 ),
 			'something new'    => array( array( 'message' => 'Something Stripe adds next year.' ), Refusal::UNKNOWN, 502 ),
 			'nothing at all'   => array( array(), Refusal::UNKNOWN, 502 ),
 		);
