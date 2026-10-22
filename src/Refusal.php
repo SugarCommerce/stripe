@@ -79,9 +79,9 @@ final readonly class Refusal {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param StripeError|array $error What attempt() threw, or Stripe's
-	 *                                 `error` object, or [] when nothing
-	 *                                 came back.
+	 * @param StripeError|array<mixed> $error What attempt() threw, or
+	 *                                        Stripe's `error` object, or []
+	 *                                        when nothing came back.
 	 *
 	 * @return array{reason: string, status: int} A reason from RULES and
 	 *         its status, or UNKNOWN and 502.

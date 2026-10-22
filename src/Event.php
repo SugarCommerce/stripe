@@ -52,14 +52,14 @@ final readonly class Event {
 	/**
 	 * @since 1.0.0
 	 *
-	 * @param string $id      Event id, `evt_…`.
-	 * @param string $type    Event type, e.g. `checkout.session.completed`.
-	 * @param string $account Connected account id, or '' for the platform's
-	 *                        own account.
-	 * @param bool   $live    Whether it happened in live mode.
-	 * @param int    $created When Stripe created it. 0 when absent.
-	 * @param array  $object  `data.object`: the thing the event is about.
-	 * @param array  $data    The whole decoded event.
+	 * @param string       $id      Event id, `evt_…`.
+	 * @param string       $type    Event type, e.g. `checkout.session.completed`.
+	 * @param string       $account Connected account id, or '' for the
+	 *                              platform's own account.
+	 * @param bool         $live    Whether it happened in live mode.
+	 * @param int          $created When Stripe created it. 0 when absent.
+	 * @param array<mixed> $object `data.object`: the thing the event is about.
+	 * @param array<mixed> $data   The whole decoded event.
 	 */
 	public function __construct(
 		public string $id,
@@ -78,6 +78,10 @@ final readonly class Event {
 	 * `t=…,v1=…` — the same construction sugarcommerce/webhooks signs with,
 	 * so its verifier checks Stripe's header unchanged, including the replay
 	 * window.
+	 *
+	 * Verified means Stripe sent it, not that it is new: Stripe delivers an
+	 * event more than once, and a genuine request can be replayed inside the
+	 * tolerance. Record each event's id and do its work once.
 	 *
 	 * @since 1.0.0
 	 *
@@ -181,14 +185,14 @@ final readonly class Event {
 			return null;
 		}
 
-		$object = $data['data']['object'] ?? array();
+		$object = Fields::at( $data, 'data', 'object' );
 
 		return new self(
 			$data['id'],
 			$data['type'],
 			is_string( $data['account'] ?? null ) ? $data['account'] : '',
 			! empty( $data['livemode'] ),
-			(int) ( $data['created'] ?? 0 ),
+			Fields::int( $data['created'] ?? null ),
 			is_array( $object ) ? $object : array(),
 			$data
 		);
@@ -267,16 +271,24 @@ final readonly class Event {
 		// array_walk_recursive only visits leaves, so a key whose value is
 		// an array — an address object, a list of tax ids — is never seen
 		// by the walk above.
-		foreach ( self::IDENTITY as $section ) {
-			if ( ! is_array( $data['data']['object'][ $section ] ?? null ) ) {
-				continue;
-			}
+		$object = Fields::at( $data, 'data', 'object' );
 
-			foreach ( self::IDENTITY_FIELDS as $field ) {
-				if ( array_key_exists( $field, $data['data']['object'][ $section ] ) ) {
-					$data['data']['object'][ $section ][ $field ] = '[redacted]';
+		if ( is_array( $object ) ) {
+			foreach ( self::IDENTITY as $section ) {
+				if ( ! is_array( $object[ $section ] ?? null ) ) {
+					continue;
+				}
+
+				foreach ( self::IDENTITY_FIELDS as $field ) {
+					if ( array_key_exists( $field, $object[ $section ] ) ) {
+						$object[ $section ][ $field ] = '[redacted]';
+					}
 				}
 			}
+
+			$envelope           = Fields::map( $data['data'] ?? null );
+			$envelope['object'] = $object;
+			$data['data']       = $envelope;
 		}
 
 		return (string) json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );

@@ -170,4 +170,10 @@ final class KeyringTest extends TestCase {
 
 		$call( new Keyless( 'no test-mode key is set (STRIPE_KEY_TEST).' ) );
 	}
+
+	public function test_a_dumped_keyring_shows_none_of_its_keys(): void {
+		$dump = print_r( Keyring::from_keys( 'sk_live_secret1', 'sk_test_secret2', 'sk_test_secret3' ), true );
+
+		$this->assertStringNotContainsString( 'secret', $dump );
+	}
 }

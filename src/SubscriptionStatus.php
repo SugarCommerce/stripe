@@ -43,14 +43,29 @@ namespace SugarCommerce\Stripe;
  */
 enum SubscriptionStatus: string {
 
-	case Active            = 'active';
-	case Trialing          = 'trialing';
-	case PastDue           = 'past_due';
-	case Unpaid            = 'unpaid';
-	case Paused            = 'paused';
-	case Incomplete        = 'incomplete';
+	/** Paid up and renewing. */
+	case Active = 'active';
+
+	/** In a free trial. */
+	case Trialing = 'trialing';
+
+	/** A renewal failed and Stripe is still retrying it. */
+	case PastDue = 'past_due';
+
+	/** Stripe gave up retrying; open invoices stay open. */
+	case Unpaid = 'unpaid';
+
+	/** Paused: a trial ended without a card, on demand, or after a failure. */
+	case Paused = 'paused';
+
+	/** The first payment is still being attempted. */
+	case Incomplete = 'incomplete';
+
+	/** The first payment never arrived; the subscription is dead. */
 	case IncompleteExpired = 'incomplete_expired';
-	case Canceled          = 'canceled';
+
+	/** Cancelled, for good. */
+	case Canceled = 'canceled';
 
 	/**
 	 * Statuses in which Stripe still considers the subscription running.

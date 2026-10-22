@@ -42,7 +42,14 @@ namespace SugarCommerce\Stripe;
  */
 enum AppInstall: string {
 
-	case Installed   = 'installed';
+	/**
+	 * The app is installed and usable on the account.
+	 */
+	case Installed = 'installed';
+
+	/**
+	 * The app was removed from the account.
+	 */
 	case Uninstalled = 'uninstalled';
 
 	/**
@@ -119,8 +126,8 @@ enum AppInstall: string {
 	 *
 	 * @since 1.3.0
 	 *
-	 * @param array $install Install object, `data.object` of an
-	 *                       `apps.install.*` event.
+	 * @param array<mixed> $install Install object, `data.object` of an
+	 *                              `apps.install.*` event.
 	 *
 	 * @return string|null E.g. `installed`, `installing`, `install_failed`.
 	 */

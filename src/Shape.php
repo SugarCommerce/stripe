@@ -79,16 +79,18 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $subscription Subscription object.
+	 * @param array<mixed> $subscription Subscription object.
 	 *
 	 * @return int|null Unix time, or null when the object carries none.
 	 */
 	public static function period_end( array $subscription ): ?int {
 		$ends = array();
 
-		foreach ( $subscription['items']['data'] ?? array() as $item ) {
-			if ( isset( $item['current_period_end'] ) ) {
-				$ends[] = (int) $item['current_period_end'];
+		foreach ( Fields::objects( Fields::at( $subscription, 'items', 'data' ) ) as $item ) {
+			$end = Fields::int_or_null( $item['current_period_end'] ?? null );
+
+			if ( null !== $end ) {
+				$ends[] = $end;
 			}
 		}
 
@@ -96,7 +98,7 @@ final class Shape {
 			return max( $ends );
 		}
 
-		return isset( $subscription['current_period_end'] ) ? (int) $subscription['current_period_end'] : null;
+		return Fields::int_or_null( $subscription['current_period_end'] ?? null );
 	}
 
 	/**
@@ -109,22 +111,22 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $line Invoice line item.
+	 * @param array<mixed> $line Invoice line item.
 	 *
 	 * @return string Price id, or ''.
 	 */
 	public static function invoice_line_price( array $line ): string {
-		$price = $line['pricing']['price_details']['price'] ?? null;
+		$price = Fields::at( $line, 'pricing', 'price_details', 'price' );
 
 		if ( is_string( $price ) ) {
 			return $price;
 		}
 
 		if ( is_array( $price ) ) {
-			return (string) ( $price['id'] ?? '' );
+			return Fields::string( $price['id'] ?? null );
 		}
 
-		return (string) ( $line['price']['id'] ?? '' );
+		return Fields::string( Fields::at( $line, 'price', 'id' ) );
 	}
 
 	/**
@@ -137,21 +139,17 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $invoice Invoice object.
+	 * @param array<mixed> $invoice Invoice object.
 	 *
-	 * @return string[] Intent ids, possibly none.
+	 * @return list<string> Intent ids, possibly none.
 	 */
 	public static function invoice_payment_intents( array $invoice ): array {
 		$intents = array();
 
-		foreach ( $invoice['payments']['data'] ?? array() as $payment ) {
-			$intent = $payment['payment']['payment_intent'] ?? null;
+		foreach ( Fields::objects( Fields::at( $invoice, 'payments', 'data' ) ) as $payment ) {
+			$intent = self::id( Fields::at( $payment, 'payment', 'payment_intent' ) );
 
-			if ( is_array( $intent ) ) {
-				$intent = $intent['id'] ?? null;
-			}
-
-			if ( is_string( $intent ) && '' !== $intent ) {
+			if ( '' !== $intent ) {
 				$intents[] = $intent;
 			}
 		}
@@ -168,14 +166,14 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $line Invoice line item.
+	 * @param array<mixed> $line Invoice line item.
 	 *
 	 * @return string Product id, or ''.
 	 */
 	public static function invoice_line_product( array $line ): string {
-		$product = $line['pricing']['price_details']['product'] ?? $line['price']['product'] ?? '';
+		$product = Fields::at( $line, 'pricing', 'price_details', 'product' ) ?? Fields::at( $line, 'price', 'product' );
 
-		return is_array( $product ) ? (string) ( $product['id'] ?? '' ) : (string) $product;
+		return is_array( $product ) ? Fields::string( $product['id'] ?? null ) : Fields::string( $product );
 	}
 
 	/**
@@ -191,21 +189,25 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $price Price object, ideally with currency_options expanded.
+	 * @param array<mixed> $price Price object, ideally with currency_options expanded.
 	 *
 	 * @return array<string, int>
 	 */
 	public static function amounts( array $price ): array {
 		$amounts = array();
 
-		foreach ( (array) ( $price['currency_options'] ?? array() ) as $code => $option ) {
-			if ( isset( $option['unit_amount'] ) ) {
-				$amounts[ strtolower( (string) $code ) ] = (int) $option['unit_amount'];
+		foreach ( Fields::map( $price['currency_options'] ?? null ) as $code => $option ) {
+			$amount = Fields::int_or_null( Fields::at( $option, 'unit_amount' ) );
+
+			if ( null !== $amount ) {
+				$amounts[ strtolower( (string) $code ) ] = $amount;
 			}
 		}
 
-		if ( ! $amounts && isset( $price['unit_amount'], $price['currency'] ) ) {
-			$amounts[ strtolower( (string) $price['currency'] ) ] = (int) $price['unit_amount'];
+		$own = Fields::int_or_null( $price['unit_amount'] ?? null );
+
+		if ( ! $amounts && null !== $own && is_scalar( $price['currency'] ?? null ) ) {
+			$amounts[ strtolower( (string) $price['currency'] ) ] = $own;
 		}
 
 		return $amounts;
@@ -220,7 +222,7 @@ final class Shape {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array $price Price object.
+	 * @param array<mixed> $price Price object.
 	 *
 	 * @return array{minimum: int|null, preset: int|null, maximum: int|null}|null
 	 */
@@ -232,9 +234,9 @@ final class Shape {
 		}
 
 		return array(
-			'minimum' => isset( $custom['minimum'] ) ? (int) $custom['minimum'] : null,
-			'preset'  => isset( $custom['preset'] ) ? (int) $custom['preset'] : null,
-			'maximum' => isset( $custom['maximum'] ) ? (int) $custom['maximum'] : null,
+			'minimum' => Fields::int_or_null( $custom['minimum'] ?? null ),
+			'preset'  => Fields::int_or_null( $custom['preset'] ?? null ),
+			'maximum' => Fields::int_or_null( $custom['maximum'] ?? null ),
 		);
 	}
 
@@ -274,12 +276,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $invoice Invoice object.
+	 * @param array<mixed> $invoice Invoice object.
 	 *
 	 * @return string Subscription id, or ''.
 	 */
 	public static function invoice_subscription( array $invoice ): string {
-		$current = self::id( $invoice['parent']['subscription_details']['subscription'] ?? null );
+		$current = self::id( Fields::at( $invoice, 'parent', 'subscription_details', 'subscription' ) );
 
 		return '' !== $current ? $current : self::id( $invoice['subscription'] ?? null );
 	}
@@ -293,12 +295,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $subscription Subscription object.
+	 * @param array<mixed> $subscription Subscription object.
 	 *
 	 * @return string Price id, or ''.
 	 */
 	public static function subscription_price( array $subscription ): string {
-		return self::id( $subscription['items']['data'][0]['price'] ?? null );
+		return self::id( Fields::at( $subscription, 'items', 'data', 0, 'price' ) );
 	}
 
 	/* ─── Checkout Sessions ─── */
@@ -312,12 +314,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $session Checkout Session.
+	 * @param array<mixed> $session Checkout Session.
 	 *
 	 * @return string
 	 */
 	public static function session_email( array $session ): string {
-		$email = $session['customer_details']['email'] ?? $session['customer_email'] ?? '';
+		$email = Fields::at( $session, 'customer_details', 'email' ) ?? $session['customer_email'] ?? '';
 
 		return is_string( $email ) ? trim( $email ) : '';
 	}
@@ -334,7 +336,7 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $session Checkout Session.
+	 * @param array<mixed> $session Checkout Session.
 	 *
 	 * @return bool
 	 */
@@ -347,16 +349,16 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array  $session Checkout Session.
+	 * @param array<mixed>  $session Checkout Session.
 	 * @param string $key     The field's key, as it was created.
 	 *
 	 * @return string The value, trimmed; '' when absent or not a text field.
 	 */
 	public static function custom_field( array $session, string $key ): string {
-		foreach ( (array) ( $session['custom_fields'] ?? array() ) as $field ) {
-			if ( is_array( $field ) && $key === ( $field['key'] ?? null ) ) {
-				$type  = (string) ( $field['type'] ?? 'text' );
-				$value = $field[ $type ]['value'] ?? $field['text']['value'] ?? '';
+		foreach ( Fields::objects( $session['custom_fields'] ?? null ) as $field ) {
+			if ( $key === ( $field['key'] ?? null ) ) {
+				$type  = Fields::string( $field['type'] ?? null, 'text' );
+				$value = Fields::at( $field, $type, 'value' ) ?? Fields::at( $field, 'text', 'value' ) ?? '';
 
 				return is_scalar( $value ) ? trim( (string) $value ) : '';
 			}
@@ -374,12 +376,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $session Checkout Session.
+	 * @param array<mixed> $session Checkout Session.
 	 *
 	 * @return bool|null True for opt-in, false for opt-out, null when not asked.
 	 */
 	public static function promotions_consent( array $session ): ?bool {
-		return match ( $session['consent']['promotions'] ?? null ) {
+		return match ( Fields::at( $session, 'consent', 'promotions' ) ) {
 			'opt_in'  => true,
 			'opt_out' => false,
 			default   => null,
@@ -392,17 +394,22 @@ final class Shape {
 	 * Whether a charge has been refunded in full.
 	 *
 	 * `charge.refunded` fires for partial refunds too, so the event alone
-	 * says nothing: a goodwill £1 back is not the sale undone.
+	 * says nothing: a goodwill £1 back is not the sale undone. Nothing
+	 * refunded is never a full refund, even of a charge for nothing.
 	 *
 	 * @since 1.2.0
+	 * @since 1.5.0 A charge with nothing refunded is not fully refunded.
 	 *
-	 * @param array $charge Charge object.
+	 * @param array<mixed> $charge Charge object.
 	 *
 	 * @return bool
 	 */
 	public static function fully_refunded( array $charge ): bool {
+		$amount   = Fields::int_or_null( $charge['amount'] ?? null );
+		$refunded = Fields::int_or_null( $charge['amount_refunded'] ?? null );
+
 		return ! empty( $charge['refunded'] )
-			|| ( isset( $charge['amount'], $charge['amount_refunded'] ) && (int) $charge['amount_refunded'] >= (int) $charge['amount'] );
+			|| ( null !== $amount && null !== $refunded && $refunded > 0 && $refunded >= $amount );
 	}
 
 	/**
@@ -414,12 +421,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $dispute Dispute object.
+	 * @param array<mixed> $dispute Dispute object.
 	 *
 	 * @return bool
 	 */
 	public static function dispute_is_inquiry( array $dispute ): bool {
-		return str_starts_with( (string) ( $dispute['status'] ?? '' ), 'warning_' );
+		return str_starts_with( Fields::string( $dispute['status'] ?? null ), 'warning_' );
 	}
 
 	/* ─── Connected accounts ─── */
@@ -429,12 +436,12 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $account Account object.
+	 * @param array<mixed> $account Account object.
 	 *
 	 * @return string|null E.g. `requirements.past_due`, `rejected.fraud`.
 	 */
 	public static function account_disabled_reason( array $account ): ?string {
-		$reason = $account['requirements']['disabled_reason'] ?? null;
+		$reason = Fields::at( $account, 'requirements', 'disabled_reason' );
 
 		return is_string( $reason ) && '' !== $reason ? $reason : null;
 	}
@@ -446,7 +453,7 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $account Account object.
+	 * @param array<mixed> $account Account object.
 	 *
 	 * @return bool
 	 */
@@ -464,7 +471,7 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $entitlement Active entitlement object.
+	 * @param array<mixed> $entitlement Active entitlement object.
 	 *
 	 * @return array{id: string, name: string, lookup_key: string}
 	 */
@@ -473,8 +480,8 @@ final class Shape {
 
 		return array(
 			'id'         => self::id( $feature ),
-			'name'       => is_array( $feature ) ? (string) ( $feature['name'] ?? '' ) : '',
-			'lookup_key' => (string) ( $entitlement['lookup_key'] ?? ( is_array( $feature ) ? ( $feature['lookup_key'] ?? '' ) : '' ) ),
+			'name'       => is_array( $feature ) ? Fields::string( $feature['name'] ?? null ) : '',
+			'lookup_key' => Fields::string( $entitlement['lookup_key'] ?? ( is_array( $feature ) ? ( $feature['lookup_key'] ?? null ) : null ) ),
 		);
 	}
 
@@ -489,28 +496,28 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $price Price object, with `currency_options` and `tiers`
+	 * @param array<mixed> $price Price object, with `currency_options` and `tiers`
 	 *                     expanded where possible.
 	 *
-	 * @return array{id: string, nickname: string, amount: int|null, currency: string, recurring: string, interval_count: int, usage: string, tiered: bool, tiers_mode: string, tiers: array, currencies: string[], amounts: array<string, int>, custom: array|null}
+	 * @return array{id: string, nickname: string, amount: int|null, currency: string, recurring: string, interval_count: int, usage: string, tiered: bool, tiers_mode: string, tiers: list<array{up_to: int|null, unit: int|null, flat: int|null}>, currencies: list<string>, amounts: array<string, int>, custom: array{minimum: int|null, preset: int|null, maximum: int|null}|null}
 	 */
 	public static function price( array $price ): array {
 		return array(
-			'id'             => (string) ( $price['id'] ?? '' ),
-			'nickname'       => (string) ( $price['nickname'] ?? '' ),
-			'amount'         => isset( $price['unit_amount'] ) ? (int) $price['unit_amount'] : null,
-			'currency'       => strtolower( (string) ( $price['currency'] ?? '' ) ),
-			'recurring'      => isset( $price['recurring']['interval'] ) ? (string) $price['recurring']['interval'] : '',
+			'id'             => Fields::string( $price['id'] ?? null ),
+			'nickname'       => Fields::string( $price['nickname'] ?? null ),
+			'amount'         => Fields::int_or_null( $price['unit_amount'] ?? null ),
+			'currency'       => strtolower( Fields::string( $price['currency'] ?? null ) ),
+			'recurring'      => Fields::string( Fields::at( $price, 'recurring', 'interval' ) ),
 			// Every three months is not every month. Stripe refuses a
 			// subscription whose items renew on different schedules, and
 			// the interval alone cannot tell them apart.
-			'interval_count' => max( 1, (int) ( $price['recurring']['interval_count'] ?? 1 ) ),
+			'interval_count' => max( 1, Fields::int( Fields::at( $price, 'recurring', 'interval_count' ), 1 ) ),
 			// Metered prices bill for usage reported later, so a cart has
 			// to be able to see them to refuse them.
-			'usage'          => (string) ( $price['recurring']['usage_type'] ?? 'licensed' ),
+			'usage'          => Fields::string( Fields::at( $price, 'recurring', 'usage_type' ), 'licensed' ),
 			'tiered'         => 'tiered' === ( $price['billing_scheme'] ?? '' ),
-			'tiers_mode'     => (string) ( $price['tiers_mode'] ?? '' ),
-			'tiers'          => self::tiers( (array) ( $price['tiers'] ?? array() ) ),
+			'tiers_mode'     => Fields::string( $price['tiers_mode'] ?? null ),
+			'tiers'          => self::tiers( Fields::map( $price['tiers'] ?? null ) ),
 			// Not the keys of `amounts`: a pay-what-you-want or tiered price
 			// has no fixed amount in any currency and can be charged in all
 			// of its own.
@@ -529,19 +536,19 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $tiers Stripe tiers, from a price with `tiers` expanded.
+	 * @param array<mixed> $tiers Stripe tiers, from a price with `tiers` expanded.
 	 *
-	 * @return array<int, array{up_to: int|null, unit: int|null, flat: int|null}>
+	 * @return list<array{up_to: int|null, unit: int|null, flat: int|null}>
 	 */
 	public static function tiers( array $tiers ): array {
-		return array_values( array_map(
+		return array_map(
 			static fn( array $tier ): array => array(
-				'up_to' => isset( $tier['up_to'] ) ? (int) $tier['up_to'] : null,
-				'unit'  => isset( $tier['unit_amount'] ) ? (int) $tier['unit_amount'] : null,
-				'flat'  => isset( $tier['flat_amount'] ) ? (int) $tier['flat_amount'] : null,
+				'up_to' => Fields::int_or_null( $tier['up_to'] ?? null ),
+				'unit'  => Fields::int_or_null( $tier['unit_amount'] ?? null ),
+				'flat'  => Fields::int_or_null( $tier['flat_amount'] ?? null ),
 			),
-			array_filter( $tiers, 'is_array' )
-		) );
+			Fields::objects( $tiers )
+		);
 	}
 
 	/**
@@ -549,14 +556,14 @@ final class Shape {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $price Price object, ideally with currency_options expanded.
+	 * @param array<mixed> $price Price object, ideally with currency_options expanded.
 	 *
-	 * @return string[]
+	 * @return list<string>
 	 */
 	public static function currencies( array $price ): array {
-		$codes = array( strtolower( (string) ( $price['currency'] ?? '' ) ) );
+		$codes = array( strtolower( Fields::string( $price['currency'] ?? null ) ) );
 
-		foreach ( array_keys( (array) ( $price['currency_options'] ?? array() ) ) as $code ) {
+		foreach ( array_keys( Fields::map( $price['currency_options'] ?? null ) ) as $code ) {
 			$codes[] = strtolower( (string) $code );
 		}
 

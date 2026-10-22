@@ -58,7 +58,7 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @var string[]
+	 * @var list<string>
 	 */
 	public const array SESSION_UNSUPPORTED = array(
 		// Stripe calculates and withholds the tax.
@@ -98,7 +98,7 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @var string[]
+	 * @var list<string>
 	 */
 	public const array LINK_UNSUPPORTED = array(
 		'automatic_tax',
@@ -126,7 +126,7 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @var array<string, string[]>
+	 * @var array<string, list<string>>
 	 */
 	public const array LINK_UNSUPPORTED_VALUES = array(
 		'submit_type' => array( 'donate', 'book' ),
@@ -226,10 +226,10 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @param array $params Session parameters, as form fields
-	 *                      (`automatic_tax[enabled]`) or nested arrays.
+	 * @param array<mixed> $params Session parameters, as form fields
+	 *                             (`automatic_tax[enabled]`) or nested arrays.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 */
 	public static function session( array $params ): array {
 		return self::strip( $params, self::SESSION_UNSUPPORTED ) + array( self::ENABLED => 'true' );
@@ -240,9 +240,9 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @param array $params Link parameters, flat or nested.
+	 * @param array<mixed> $params Link parameters, flat or nested.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 */
 	public static function link( array $params ): array {
 		return self::strip( $params, self::LINK_UNSUPPORTED, self::LINK_UNSUPPORTED_VALUES ) + array( self::ENABLED => 'true' );
@@ -256,7 +256,7 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @param string|array|null $tax_code The product's `tax_code`.
+	 * @param string|array<mixed>|null $tax_code The product's `tax_code`.
 	 *
 	 * @return bool
 	 */
@@ -272,10 +272,10 @@ final class ManagedPayments {
 	 *
 	 * @since 1.4.0
 	 *
-	 * @param array    $params Parameters, flat or nested.
-	 * @param string[] $paths  SESSION_UNSUPPORTED or LINK_UNSUPPORTED.
+	 * @param array<mixed> $params Parameters, flat or nested.
+	 * @param list<string> $paths  SESSION_UNSUPPORTED or LINK_UNSUPPORTED.
 	 *
-	 * @return string[]
+	 * @return list<string>
 	 */
 	public static function unsupported( array $params, array $paths ): array {
 		return array_values( array_filter(
@@ -292,11 +292,12 @@ final class ManagedPayments {
 	 * `automatic_tax[liability][type]` with it. Nested arrays are walked the
 	 * same way.
 	 *
-	 * @param array                   $params Parameters, flat or nested.
-	 * @param string[]                $paths  Dotted paths to remove.
-	 * @param array<string, string[]> $values Path => the values refused for it.
+	 * @param array<mixed>                $params Parameters, flat or nested.
+	 * @param list<string>                $paths  Dotted paths to remove.
+	 * @param array<string, list<string>> $values Path => the values refused
+	 *                                            for it.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 */
 	private static function strip( array $params, array $paths, array $values = array() ): array {
 		foreach ( $paths as $path ) {
@@ -317,10 +318,10 @@ final class ManagedPayments {
 	/**
 	 * Parameters without one path, in either form.
 	 *
-	 * @param array    $params   Parameters.
-	 * @param string[] $segments The path, split.
+	 * @param array<mixed> $params   Parameters.
+	 * @param list<string> $segments The path, split.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 */
 	private static function without( array $params, array $segments ): array {
 		$field = self::field( $segments );
@@ -334,6 +335,10 @@ final class ManagedPayments {
 		// The nested form: walk down and drop the last segment.
 		$head = array_shift( $segments );
 
+		if ( null === $head ) {
+			return $params;
+		}
+
 		if ( array() === $segments ) {
 			unset( $params[ $head ] );
 		} elseif ( is_array( $params[ $head ] ?? null ) ) {
@@ -346,7 +351,7 @@ final class ManagedPayments {
 	/**
 	 * A path as the form field Stripe reads: `a.b.c` is `a[b][c]`.
 	 *
-	 * @param string[] $segments The path, split.
+	 * @param list<string> $segments The path, split.
 	 *
 	 * @return string
 	 */

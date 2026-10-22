@@ -48,11 +48,11 @@ final class Keyless extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param string|null $account Connected account id, or null.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1.
+	 * @param string|null  $account Connected account id, or null.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array|null Always null.
+	 * @return array<mixed>|null Always null.
 	 */
 	#[\Override]
 	public function get( string $path, ?string $account = null, array $query = array() ): ?array {
@@ -64,11 +64,11 @@ final class Keyless extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param string|null $account Connected account id, or null.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1.
+	 * @param string|null  $account Connected account id, or null.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 *
 	 * @throws StripeError Always.
 	 */
@@ -82,11 +82,11 @@ final class Keyless extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters.
-	 * @param string|null $account Connected account id, or null.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters.
+	 * @param string|null  $account Connected account id, or null.
 	 *
-	 * @return array|null Always null.
+	 * @return array<mixed>|null Always null.
 	 */
 	#[\Override]
 	#[\NoDiscard( 'Null means Stripe did not do it.' )]
@@ -99,11 +99,11 @@ final class Keyless extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters.
-	 * @param string|null $account Connected account id, or null.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters.
+	 * @param string|null  $account Connected account id, or null.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 *
 	 * @throws StripeError Always.
 	 */

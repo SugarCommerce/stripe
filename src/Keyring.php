@@ -119,7 +119,7 @@ class Keyring extends Client {
 	 *
 	 * @param Client      $client  What the caller holds.
 	 * @param string      $mode    live | test
-	 * @param string|null $account The connected account acted for, so a
+	 * @param string|null  $account The connected account acted for, so a
 	 *                             sandbox install gets the sandbox's key.
 	 *
 	 * @return Client
@@ -142,7 +142,7 @@ class Keyring extends Client {
 	 * @since 1.2.0
 	 *
 	 * @param string      $mode    live | test
-	 * @param string|null $account Connected account id, or null.
+	 * @param string|null  $account Connected account id, or null.
 	 *
 	 * @return Client
 	 */
@@ -194,11 +194,11 @@ class Keyring extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param string|null $account Connected account id, or null.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1.
+	 * @param string|null  $account Connected account id, or null.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array|null
+	 * @return array<mixed>|null
 	 */
 	#[\Override]
 	public function get( string $path, ?string $account = null, array $query = array() ): ?array {
@@ -210,11 +210,11 @@ class Keyring extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param string|null $account Connected account id, or null.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1.
+	 * @param string|null  $account Connected account id, or null.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 *
 	 * @throws StripeError When Stripe does not answer.
 	 */
@@ -228,11 +228,11 @@ class Keyring extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters.
-	 * @param string|null $account Connected account id, or null.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters.
+	 * @param string|null  $account Connected account id, or null.
 	 *
-	 * @return array|null
+	 * @return array<mixed>|null
 	 */
 	#[\Override]
 	#[\NoDiscard( 'Null means Stripe did not do it.' )]
@@ -245,11 +245,11 @@ class Keyring extends Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters.
-	 * @param string|null $account Connected account id, or null.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters.
+	 * @param string|null  $account Connected account id, or null.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 *
 	 * @throws StripeError With Stripe's reason.
 	 */

@@ -269,4 +269,45 @@ final class ClientTest extends TestCase {
 		$this->assertSame( 'customer=cus_1&return_url=https%3A%2F%2Fexample.com%2Fback', $http->requests[0]['body'] );
 		$this->assertSame( '', $this->client( new Fake() )->portal_url( '', 'https://example.com' ), 'No customer, no call.' );
 	}
+
+	/* ─── Hardening (1.5.0) ─────────────────────────────────────────── */
+
+	/**
+	 * `'prices/' . $id` with an id from a buyer: dot segments are collapsed
+	 * on the way out, and a `?` starts a query, so the platform key would
+	 * be used on an endpoint the caller never named.
+	 */
+	public function test_a_path_that_is_not_names_and_ids_is_never_sent(): void {
+		$http   = new Fake();
+		$client = $this->client( $http );
+
+		$this->assertNull( $client->get( 'prices/../customers/cus_1', 'acct_1' ) );
+		$this->assertNull( $client->get( 'prices/price_1?expand[]=customer' ) );
+		$this->assertNull( $client->post( 'subscriptions/sub_1/../../customers', array( 'email' => 'x@example.com' ) ) );
+		$this->assertNull( $client->get( 'prices//price_1' ) );
+		$this->assertSame( array(), $http->requests->getArrayCopy() );
+
+		$this->expectException( StripeError::class );
+
+		$client->fetch( 'checkout/sessions/%2e%2e' );
+	}
+
+	/**
+	 * Stripe-Account is a header naming who to act for; anything that is
+	 * not an account id is not sent to name one.
+	 */
+	public function test_an_account_that_is_not_an_account_id_is_never_sent(): void {
+		$http = new Fake();
+
+		$this->assertNull( $this->client( $http )->get( 'customers/cus_1', 'acct_1 ' ) );
+		$this->assertNull( $this->client( $http )->get( 'customers/cus_1', '' ) );
+		$this->assertSame( array(), $http->requests->getArrayCopy() );
+	}
+
+	public function test_a_dumped_client_does_not_show_its_key(): void {
+		$dump = print_r( $this->client( new Fake() ), true );
+
+		$this->assertStringNotContainsString( 'sk_test_123', $dump );
+		$this->assertStringContainsString( Client::API_VERSION, $dump );
+	}
 }

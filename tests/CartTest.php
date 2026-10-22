@@ -261,4 +261,15 @@ final class CartTest extends TestCase {
 		$this->assertSame( array( 'customer_email' => 'b@example.com' ), Cart::customer_params( 'b@example.com', true ) );
 		$this->assertSame( array( 'customer' => 'cus_1' ), Cart::customer_params( 'b@example.com', false, 'cus_1' ) );
 	}
+
+	/**
+	 * A rule that answers with something other than a code or null is
+	 * broken; reading its answer as "no objection" would let the price
+	 * through.
+	 */
+	public function test_a_rule_that_answers_nonsense_is_not_a_pass(): void {
+		$this->expectException( \UnexpectedValueException::class );
+
+		( new Cart( static fn ( array $price ): bool => true ) )->refusal_of( array( 'id' => 'price_1' ) );
+	}
 }

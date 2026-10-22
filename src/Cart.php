@@ -43,6 +43,8 @@ namespace SugarCommerce\Stripe;
  * the same places Stripe's are.
  *
  * @since 1.2.0
+ *
+ * @phpstan-type Checked array{ok: bool, code: string, mode: string, currency: string, currencies: list<string>, prices: list<string>, custom: bool}
  */
 final readonly class Cart {
 
@@ -68,19 +70,65 @@ final readonly class Cart {
 	 */
 	public const int MAX_OPTIONAL = 10;
 
-	/**
+	/*
 	 * Refusal codes, in the order they are checked.
+	 */
+
+	/**
+	 * Nothing in the cart.
 	 *
 	 * @since 1.2.0
 	 */
-	public const string EMPTY            = 'empty';
-	public const string INACTIVE         = 'inactive';
-	public const string METERED          = 'metered';
+	public const string EMPTY = 'empty';
+
+	/**
+	 * A price, or its product, is archived.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string INACTIVE = 'inactive';
+
+	/**
+	 * A metered price, which bills for usage a checkout cannot report.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string METERED = 'metered';
+
+	/**
+	 * A pay-what-you-want price that also recurs.
+	 *
+	 * @since 1.2.0
+	 */
 	public const string CUSTOM_RECURRING = 'custom_recurring';
-	public const string CUSTOM_ALONE     = 'custom_alone';
-	public const string INTERVAL         = 'interval';
-	public const string TOO_MANY         = 'too_many';
-	public const string CURRENCY         = 'currency';
+
+	/**
+	 * A pay-what-you-want price with anything else in the cart.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string CUSTOM_ALONE = 'custom_alone';
+
+	/**
+	 * Recurring prices that renew on different schedules.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string INTERVAL = 'interval';
+
+	/**
+	 * More items than one session takes.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string TOO_MANY = 'too_many';
+
+	/**
+	 * No currency every item can be charged in.
+	 *
+	 * @since 1.2.0
+	 */
+	public const string CURRENCY = 'currency';
 
 	/**
 	 * @since 1.2.0
@@ -97,14 +145,13 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array<int, array> $prices   Shaped prices, in cart order.
-	 *                                    Repeats are dropped: a cart holds
-	 *                                    one of each.
-	 * @param string            $currency The currency a page showed, or ''
-	 *                                    to pick one.
+	 * @param array<array<mixed>> $prices   Shaped prices, in cart order.
+	 *                                      Repeats are dropped: a cart holds
+	 *                                      one of each.
+	 * @param string              $currency The currency a page showed, or ''
+	 *                                      to pick one.
 	 *
-	 * @return array{ok: bool, code: string, mode: string, currency: string, currencies: string[], prices: string[], custom: bool}
-	 *         `mode` is payment | subscription. `currency` is '' when one
+	 * @return Checked `mode` is payment | subscription. `currency` is '' when one
 	 *         item may be charged in whichever of its currencies Stripe
 	 *         picks for the buyer; `currencies` is the set every item shares.
 	 */
@@ -128,7 +175,7 @@ final readonly class Cart {
 			'mode'       => self::counts( $prices )['recurring'] > 0 ? 'subscription' : 'payment',
 			'currency'   => self::currency( $prices, $shared, strtolower( trim( $currency ) ) ),
 			'currencies' => $shared,
-			'prices'     => array_column( $prices, 'id' ),
+			'prices'     => array_map( static fn( array $price ): string => Fields::string( $price['id'] ?? null ), $prices ),
 			'custom'     => self::has_custom( $prices ),
 		);
 	}
@@ -145,24 +192,24 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array             $checked    What check() answered, ok.
-	 * @param array<int, array> $items      The cart's shaped prices, each
-	 *                                      with `product`.
-	 * @param array<int, array> $candidates Shaped prices to choose from,
-	 *                                      each with `product`, in
-	 *                                      preference order.
+	 * @param Checked             $checked    What check() answered, ok.
+	 * @param array<array<mixed>> $items      The cart's shaped prices, each
+	 *                                        with `product`.
+	 * @param array<array<mixed>> $candidates Shaped prices to choose from,
+	 *                                        each with `product`, in
+	 *                                        preference order.
 	 *
-	 * @return string[] Price ids, at most MAX_OPTIONAL.
+	 * @return list<string> Price ids, at most MAX_OPTIONAL.
 	 */
 	public function extras( array $checked, array $items, array $candidates ): array {
 		if ( empty( $checked['ok'] ) || ! empty( $checked['custom'] ) ) {
 			return array();
 		}
 
-		$taken    = array_flip( array_map( 'strval', array_column( $items, 'product' ) ) );
-		$schedule = (string) ( array_values( array_filter( array_map( self::interval( ... ), $items ) ) )[0] ?? '' );
-		$room     = self::room( (string) $checked['mode'], self::counts( $items ) );
-		$wanted   = '' !== $checked['currency'] ? array( (string) $checked['currency'] ) : (array) $checked['currencies'];
+		$taken    = array_flip( array_map( Fields::string( ... ), array_column( $items, 'product' ) ) );
+		$schedule = array_values( array_filter( array_map( self::interval( ... ), $items ) ) )[0] ?? '';
+		$room     = self::room( $checked['mode'], self::counts( $items ) );
+		$wanted   = '' !== $checked['currency'] ? array( $checked['currency'] ) : $checked['currencies'];
 		$picked   = array();
 
 		foreach ( $candidates as $price ) {
@@ -170,14 +217,14 @@ final readonly class Cart {
 				break;
 			}
 
-			$product = (string) ( $price['product'] ?? '' );
+			$product = Fields::string( $price['product'] ?? null );
 			$kind    = '' !== self::interval( $price ) ? 'recurring' : 'one_off';
 
-			if ( isset( $taken[ $product ] ) || $room[ $kind ] <= 0 || ! $this->fits( $price, (string) $checked['mode'], $schedule, $wanted ) ) {
+			if ( isset( $taken[ $product ] ) || $room[ $kind ] <= 0 || ! $this->fits( $price, $checked['mode'], $schedule, $wanted ) ) {
 				continue;
 			}
 
-			$picked[]          = (string) $price['id'];
+			$picked[]          = Fields::string( $price['id'] ?? null );
 			$taken[ $product ] = true;
 			--$room[ $kind ];
 		}
@@ -190,18 +237,48 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $price A shaped price.
+	 * @param array<mixed> $price A shaped price.
 	 *
 	 * @return string|null A refusal code.
+	 *
+	 * @throws \UnexpectedValueException When the application's rule answers
+	 *                                   with something other than a code or
+	 *                                   null — which is a broken rule, not a
+	 *                                   price to let through.
 	 */
 	public function refusal_of( array $price ): ?string {
 		return match ( true ) {
 			false === ( $price['active'] ?? true ),
 			false === ( $price['product_active'] ?? true ) => self::INACTIVE,
 			'metered' === ( $price['usage'] ?? 'licensed' ) => self::METERED,
-			null !== ( $price['custom'] ?? null ) && '' !== (string) ( $price['recurring'] ?? '' ) => self::CUSTOM_RECURRING,
-			default => null === $this->refuses ? null : ( $this->refuses )( $price ),
+			null !== ( $price['custom'] ?? null ) && '' !== Fields::string( $price['recurring'] ?? null ) => self::CUSTOM_RECURRING,
+			default => $this->own_refusal( $price ),
 		};
+	}
+
+	/**
+	 * What the application's own rule says about a price.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param array<mixed> $price A shaped price.
+	 *
+	 * @return string|null A refusal code, or null.
+	 *
+	 * @throws \UnexpectedValueException When the rule answers with anything else.
+	 */
+	private function own_refusal( array $price ): ?string {
+		if ( null === $this->refuses ) {
+			return null;
+		}
+
+		$code = ( $this->refuses )( $price );
+
+		if ( null !== $code && ! is_string( $code ) ) {
+			throw new \UnexpectedValueException( 'A cart rule must answer with a refusal code or null.' );
+		}
+
+		return $code;
 	}
 
 	/**
@@ -212,14 +289,14 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $price Shaped price.
+	 * @param array<mixed> $price Shaped price.
 	 *
 	 * @return string E.g. "month:1", "month:3", or ''.
 	 */
 	public static function interval( array $price ): string {
-		$interval = (string) ( $price['recurring'] ?? '' );
+		$interval = Fields::string( $price['recurring'] ?? null );
 
-		return '' === $interval ? '' : $interval . ':' . max( 1, (int) ( $price['interval_count'] ?? 1 ) );
+		return '' === $interval ? '' : $interval . ':' . max( 1, Fields::int( $price['interval_count'] ?? null, 1 ) );
 	}
 
 	/**
@@ -231,18 +308,19 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $price Shaped price.
+	 * @param array<mixed> $price Shaped price.
 	 *
-	 * @return string[] Lower case.
+	 * @return list<string> Lower case.
 	 */
 	public static function currencies( array $price ): array {
-		$codes = (array) ( $price['currencies'] ?? array() );
+		$codes = $price['currencies'] ?? array();
+		$codes = is_array( $codes ) ? $codes : array( $codes );
 
 		if ( ! $codes ) {
-			$codes = array_merge( array( (string) ( $price['currency'] ?? '' ) ), array_keys( (array) ( $price['amounts'] ?? array() ) ) );
+			$codes = array_merge( array( Fields::string( $price['currency'] ?? null ) ), array_keys( Fields::map( $price['amounts'] ?? null ) ) );
 		}
 
-		return array_values( array_unique( array_filter( array_map( static fn( mixed $c ): string => strtolower( (string) $c ), $codes ) ) ) );
+		return array_values( array_unique( array_filter( array_map( static fn( mixed $c ): string => strtolower( Fields::string( $c ) ), $codes ) ) ) );
 	}
 
 	/**
@@ -250,12 +328,12 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array<int, array> $prices Shaped prices.
+	 * @param array<array<mixed>> $prices Shaped prices.
 	 *
 	 * @return array{recurring: int, one_off: int}
 	 */
 	public static function counts( array $prices ): array {
-		$recurring = count( array_filter( $prices, static fn( array $p ): bool => '' !== (string) ( $p['recurring'] ?? '' ) ) );
+		$recurring = count( array_filter( $prices, static fn( array $p ): bool => '' !== Fields::string( $p['recurring'] ?? null ) ) );
 
 		return array( 'recurring' => $recurring, 'one_off' => count( $prices ) - $recurring );
 	}
@@ -265,8 +343,8 @@ final readonly class Cart {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string[] $prices Price ids.
-	 * @param string   $field  line_items | optional_items
+	 * @param array<string> $prices Price ids.
+	 * @param string        $field  line_items | optional_items
 	 *
 	 * @return array<string, string|int>
 	 */
@@ -274,7 +352,7 @@ final readonly class Cart {
 		$lines = array();
 
 		foreach ( array_values( $prices ) as $index => $price ) {
-			$lines[ "{$field}[{$index}][price]" ]    = (string) $price;
+			$lines[ "{$field}[{$index}][price]" ]    = $price;
 			$lines[ "{$field}[{$index}][quantity]" ] = 1;
 		}
 
@@ -313,7 +391,7 @@ final readonly class Cart {
 	/**
 	 * The first rule these prices break, or null.
 	 *
-	 * @param array<int, array> $prices Shaped prices, de-duplicated.
+	 * @param list<array<mixed>> $prices Shaped prices, de-duplicated.
 	 *
 	 * @return string|null
 	 */
@@ -379,10 +457,10 @@ final readonly class Cart {
 	/**
 	 * Whether one candidate can be an optional item on this session.
 	 *
-	 * @param array    $price    Shaped candidate price.
-	 * @param string   $mode     payment | subscription
-	 * @param string   $schedule The cart's interval, or ''.
-	 * @param string[] $wanted   Currencies it must be chargeable in.
+	 * @param array<mixed> $price    Shaped candidate price.
+	 * @param string       $mode     payment | subscription
+	 * @param string       $schedule The cart's interval, or ''.
+	 * @param list<string> $wanted   Currencies it must be chargeable in.
 	 *
 	 * @return bool
 	 */
@@ -399,9 +477,9 @@ final readonly class Cart {
 	 * The currencies every price can be charged in, the first price's order
 	 * kept.
 	 *
-	 * @param array<int, array> $prices Shaped prices.
+	 * @param list<array<mixed>> $prices Shaped prices.
 	 *
-	 * @return string[]
+	 * @return list<string>
 	 */
 	private static function shared_currencies( array $prices ): array {
 		$shared = self::currencies( $prices[0] );
@@ -423,9 +501,9 @@ final readonly class Cart {
 	 * priced in — so the first item's own currency when they all share it,
 	 * else the first they share.
 	 *
-	 * @param array<int, array> $prices    Shaped prices.
-	 * @param string[]          $shared    Currencies they all take.
-	 * @param string            $requested What the page showed, or ''.
+	 * @param list<array<mixed>> $prices    Shaped prices.
+	 * @param list<string>       $shared    Currencies they all take.
+	 * @param string             $requested What the page showed, or ''.
 	 *
 	 * @return string
 	 */
@@ -438,7 +516,7 @@ final readonly class Cart {
 			return '';
 		}
 
-		$own = strtolower( (string) ( $prices[0]['currency'] ?? '' ) );
+		$own = strtolower( Fields::string( $prices[0]['currency'] ?? null ) );
 
 		return in_array( $own, $shared, true ) ? $own : $shared[0];
 	}
@@ -446,7 +524,7 @@ final readonly class Cart {
 	/**
 	 * Whether any price is pay-what-you-want.
 	 *
-	 * @param array<int, array> $prices Shaped prices.
+	 * @param list<array<mixed>> $prices Shaped prices.
 	 *
 	 * @return bool
 	 */
@@ -463,15 +541,15 @@ final readonly class Cart {
 	/**
 	 * The prices with repeats dropped, first occurrence kept.
 	 *
-	 * @param array<int, array> $prices Shaped prices.
+	 * @param array<array<mixed>> $prices Shaped prices.
 	 *
-	 * @return array<int, array>
+	 * @return list<array<mixed>>
 	 */
 	private static function unique( array $prices ): array {
 		$seen = array();
 
 		foreach ( $prices as $price ) {
-			$seen[ (string) ( $price['id'] ?? '' ) ] ??= $price;
+			$seen[ Fields::string( $price['id'] ?? null ) ] ??= $price;
 		}
 
 		unset( $seen[''] );
@@ -484,7 +562,7 @@ final readonly class Cart {
 	 *
 	 * @param string $code Refusal code.
 	 *
-	 * @return array{ok: bool, code: string, mode: string, currency: string, currencies: string[], prices: string[], custom: bool}
+	 * @return Checked
 	 */
 	private static function refuse( string $code ): array {
 		return array( 'ok' => false, 'code' => $code, 'mode' => '', 'currency' => '', 'currencies' => array(), 'prices' => array(), 'custom' => false );

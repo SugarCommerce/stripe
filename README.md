@@ -74,6 +74,8 @@ try {
 }
 ```
 
+A path is checked before anything is sent: every segment must be a plain name or id (letters, digits, `_`, `-`), so `'prices/' . $id` built from a buyer's input cannot become `prices/../customers/…` or carry its own `?query`. An account must look like `acct_…`. Either refusal fails the way an outage does — `null` from `get()`/`post()`, a `StripeError` from `fetch()`/`attempt()` — and a dumped `Client` or `Keyring` shows no keys.
+
 ## One key per mode
 
 ```php
@@ -185,13 +187,15 @@ match ( AppInstall::of( $event ) ) {
 [ $event, $from ] = Event::receive_any( $body, $header, array( 'platform' => $ours, 'sandbox' => $sandbox_secret ) );
 ```
 
+A verified event is genuine, not new: Stripe delivers some events more than once, and a captured request replays within the five-minute window. Record `$event->id` and do each event's work once.
+
 ## Testing
 
 ```bash
 composer test
 ```
 
-173 tests: the client (pinning to endive, Connect headers, structured errors, `attempt()`, paging and its failure and runaway cases, charges, the portal), events (verification, several secrets, redaction), every `Shape` read in its current and pre-basil location (and endive's platform rejections), both families of app install event and the Install lifecycle, a failed tax calculation sorted as Stripe's failure, the keyring and keyless refusals, every subscription status, the cart rules and extras, refusal classification, the shared request-digest vectors and app signatures, and that every must-check result keeps `#[\NoDiscard]`.
+194 tests: the client (pinning to endive, Connect headers, structured errors, `attempt()`, paging and its failure and runaway cases, charges, the portal), events (verification, several secrets, redaction), every `Shape` read in its current and pre-basil location (and endive's platform rejections), both families of app install event and the Install lifecycle, a failed tax calculation sorted as Stripe's failure, the keyring and keyless refusals, every subscription status, the cart rules and extras, refusal classification, the shared request-digest vectors and app signatures, and that every must-check result keeps `#[\NoDiscard]`.
 
 In your own tests, pass `SugarCommerce\HttpClient\Fake` as the client's HTTP client:
 

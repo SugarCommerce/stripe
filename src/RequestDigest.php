@@ -62,7 +62,7 @@ final readonly class RequestDigest {
 	 *
 	 * @param string      $method GET or POST.
 	 * @param string      $path   The route.
-	 * @param array       $query  Decoded query parameters.
+	 * @param array<mixed> $query Decoded query parameters.
 	 * @param string|null $body   Raw body.
 	 *
 	 * @return string Hex digest, or '' for a request no client could have
@@ -79,7 +79,7 @@ final readonly class RequestDigest {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $query Decoded query parameters.
+	 * @param array<mixed> $query Decoded query parameters.
 	 *
 	 * @return string|null Null when a value is not a plain scalar, which a
 	 *                     signing client never sends.

@@ -137,4 +137,15 @@ final class RequestDigestTest extends TestCase {
 		$this->assertSame( $proof, AppSignature::proof( $header . ',x=1', self::SECRET, 'usr_1', 'acct_1', now: self::NOW ) );
 		$this->assertSame( '', AppSignature::proof( '', self::SECRET, 'usr_1', 'acct_1', now: self::NOW ) );
 	}
+
+	/**
+	 * An extra field named like the identity would win in the extra-first
+	 * order, and the signature would prove a user the request never
+	 * claimed.
+	 */
+	public function test_an_extra_field_cannot_stand_in_for_the_identity(): void {
+		$header = self::sign( array( 'user_id' => 'usr_other', 'account_id' => 'acct_1' ) );
+
+		$this->assertFalse( AppSignature::verify( $header, self::SECRET, 'usr_claimed', 'acct_1', array( 'user_id' => 'usr_other' ), now: self::NOW ) );
+	}
 }

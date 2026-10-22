@@ -45,8 +45,10 @@ final readonly class AppSignature {
 	 * @param string   $secret    The app's signing secret, `absec_…`.
 	 * @param string   $user      Claimed user id.
 	 * @param string   $account   Claimed account id.
-	 * @param array    $extra     Other signed fields, e.g.
+	 * @param array<string, mixed> $extra Other signed fields, e.g.
 	 *                            `array( 'request' => RequestDigest::of(…) )`.
+	 *                            Never `user_id` or `account_id`: those are
+	 *                            the claim, and are ignored here.
 	 * @param int      $tolerance Seconds of clock skew allowed.
 	 * @param int|null $now       Current time. For tests.
 	 *
@@ -79,7 +81,8 @@ final readonly class AppSignature {
 	 * @param string   $secret    The app's signing secret.
 	 * @param string   $user      Claimed user id.
 	 * @param string   $account   Claimed account id.
-	 * @param array    $extra     Other signed fields.
+	 * @param array<string, mixed> $extra Other signed fields. `user_id` and
+	 *                            `account_id` are ignored.
 	 * @param int      $tolerance Seconds of clock skew allowed.
 	 * @param int|null $now       Current time. For tests.
 	 *
@@ -100,6 +103,11 @@ final readonly class AppSignature {
 
 		$identity = array( 'user_id' => $user, 'account_id' => $account );
 
+		// An extra field named like the identity would win in one of the two
+		// orders tried below, and the signature would then prove a user the
+		// request did not claim.
+		$extra = array_diff_key( $extra, $identity );
+
 		foreach ( $extra ? array( $identity + $extra, $extra + $identity ) : array( $identity ) as $fields ) {
 			$payload = self::payload( $fields );
 			$check   = Signature::verify( $payload, $header, $secret, $tolerance, $now );
@@ -118,7 +126,7 @@ final readonly class AppSignature {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param array $fields Signed fields, in order.
+	 * @param array<mixed> $fields Signed fields, in order.
 	 *
 	 * @return string
 	 */

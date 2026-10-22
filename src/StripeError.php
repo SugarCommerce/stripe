@@ -42,7 +42,7 @@ final class StripeError extends RuntimeException {
 	 * @param string $path   Path below /v1 that was requested.
 	 * @param int    $status HTTP status, 0 when the request never completed.
 	 * @param string $body   Start of the response body, for the log.
-	 * @param array  $error  Stripe's `error` object (type, code, param,
+	 * @param array<mixed> $error Stripe's `error` object (type, code, param,
 	 *                       message, decline_code), or [] when nothing came
 	 *                       back to read.
 	 */

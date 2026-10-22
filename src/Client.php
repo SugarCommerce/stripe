@@ -45,6 +45,14 @@ class Client {
 	private const string BASE = 'https://api.stripe.com/v1';
 
 	/**
+	 * What a path segment may be: an endpoint's name or an object's id.
+	 *
+	 * Stripe's ids are letters, digits and underscores; its endpoints add
+	 * hyphens and nothing else.
+	 */
+	private const string SEGMENT = '/^[A-Za-z0-9_\-]+$/';
+
+	/**
 	 * Most pages each() reads by default: ten thousand objects.
 	 *
 	 * @since 1.2.0
@@ -103,15 +111,15 @@ class Client {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string      $path    Path below /v1, e.g. 'checkout/sessions/cs_1'.
-	 * @param string|null $account Connected account id, or null for the
-	 *                             platform's own.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1, e.g. 'checkout/sessions/cs_1'.
+	 * @param string|null  $account Connected account id, or null for the
+	 *                              platform's own.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array|null The decoded object.
+	 * @return array<mixed>|null The decoded object.
 	 */
 	public function get( string $path, ?string $account = null, array $query = array() ): ?array {
-		return $this->unwrap( $this->http->get( $this->url( $path, $query ), $this->headers( $account ) ) );
+		return $this->unwrap( $this->call( $path, $account, $query ) );
 	}
 
 	/**
@@ -123,18 +131,18 @@ class Client {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param string|null $account Connected account id, or null for the
-	 *                             platform's own.
-	 * @param array       $query   Query parameters.
+	 * @param string       $path    Path below /v1.
+	 * @param string|null  $account Connected account id, or null for the
+	 *                              platform's own.
+	 * @param array<mixed> $query   Query parameters.
 	 *
-	 * @return array The decoded object.
+	 * @return array<mixed> The decoded object.
 	 *
 	 * @throws StripeError On a non-2xx answer, a transport failure or a body
 	 *                     that is not JSON.
 	 */
 	public function fetch( string $path, ?string $account = null, array $query = array() ): array {
-		return $this->answer( $path, $this->http->get( $this->url( $path, $query ), $this->headers( $account ) ) );
+		return $this->answer( $path, $this->call( $path, $account, $query ) );
 	}
 
 	/**
@@ -145,16 +153,16 @@ class Client {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters, nested as Stripe documents them.
-	 * @param string|null $account Connected account id, or null for the
-	 *                             platform's own.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters, nested as Stripe documents them.
+	 * @param string|null  $account Connected account id, or null for the
+	 *                              platform's own.
 	 *
-	 * @return array|null The decoded object.
+	 * @return array<mixed>|null The decoded object.
 	 */
 	#[\NoDiscard( 'Null means Stripe did not do it.' )]
 	public function post( string $path, array $params, ?string $account = null ): ?array {
-		return $this->unwrap( $this->send( $path, $params, $account ) );
+		return $this->unwrap( $this->call( $path, $account, params: $params ) );
 	}
 
 	/**
@@ -168,12 +176,12 @@ class Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters, nested as Stripe documents them.
-	 * @param string|null $account Connected account id, or null for the
-	 *                             platform's own.
+	 * @param string       $path    Path below /v1.
+	 * @param array<mixed> $params  Parameters, nested as Stripe documents them.
+	 * @param string|null  $account Connected account id, or null for the
+	 *                              platform's own.
 	 *
-	 * @return array The object Stripe created or changed.
+	 * @return array<mixed> The object Stripe created or changed.
 	 *
 	 * @throws StripeError On a non-2xx answer, a transport failure or a body
 	 *                     that is not JSON; code(), param() and message()
@@ -181,7 +189,7 @@ class Client {
 	 */
 	#[\NoDiscard( 'The object is the only proof Stripe did it.' )]
 	public function attempt( string $path, array $params, ?string $account = null ): array {
-		return $this->answer( $path, $this->send( $path, $params, $account ) );
+		return $this->answer( $path, $this->call( $path, $account, params: $params ) );
 	}
 
 	/**
@@ -198,15 +206,16 @@ class Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path      List path below /v1, e.g. 'prices'.
-	 * @param string|null $account   Connected account id, or null for the
+	 * @param string       $path      List path below /v1, e.g. 'prices'.
+	 * @param string|null  $account   Connected account id, or null for the
 	 *                               platform's own.
-	 * @param array       $query     Query parameters. `limit` defaults to
+	 * @param array<mixed> $query    Query parameters. `limit` defaults to
 	 *                               100, the most Stripe allows.
 	 * @param int         $max_pages Most pages to read, so a runaway list
 	 *                               cannot hold a request open for ever.
 	 *
-	 * @return \Generator<int, array> Each object, in Stripe's order.
+	 * @return \Generator<int, array<mixed>, mixed, void> Each object, in
+	 *                                                  Stripe's order.
 	 *
 	 * @throws StripeError When a page cannot be read.
 	 */
@@ -218,12 +227,10 @@ class Client {
 			$list = $this->fetch( $path, $account, '' === $after ? $query : array( 'starting_after' => $after ) + $query );
 			$last = $after;
 
-			foreach ( (array) ( $list['data'] ?? array() ) as $object ) {
-				if ( is_array( $object ) ) {
-					$last = (string) ( $object['id'] ?? $last );
+			foreach ( Fields::objects( $list['data'] ?? null ) as $object ) {
+				$last = Fields::string( $object['id'] ?? null, $last );
 
-					yield $object;
-				}
+				yield $object;
 			}
 
 			// The end, or a page that did not move the cursor — which would
@@ -241,12 +248,12 @@ class Client {
 	 *
 	 * @since 1.2.0
 	 *
-	 * @param string      $path      List path below /v1.
-	 * @param string|null $account   Connected account id, or null.
-	 * @param array       $query     Query parameters.
+	 * @param string       $path      List path below /v1.
+	 * @param string|null  $account   Connected account id, or null.
+	 * @param array<mixed> $query    Query parameters.
 	 * @param int         $max_pages Most pages to read.
 	 *
-	 * @return array<int, array>
+	 * @return list<array<mixed>>
 	 *
 	 * @throws StripeError When a page cannot be read.
 	 */
@@ -265,7 +272,7 @@ class Client {
 	 * @param string $session_id Checkout Session id.
 	 * @param string $account    Connected account id.
 	 *
-	 * @return array<int, array> Raw line item objects.
+	 * @return list<array<mixed>> Raw line item objects.
 	 *
 	 * @throws StripeError When Stripe does not answer. An empty list here
 	 *                     would mean "they bought nothing", and a paid
@@ -278,7 +285,7 @@ class Client {
 			array( 'limit' => 100 )
 		);
 
-		return $result['data'] ?? array();
+		return Fields::objects( $result['data'] ?? null );
 	}
 
 	/**
@@ -296,7 +303,7 @@ class Client {
 	 * @return string The URL, or '' when there is not one yet.
 	 */
 	public function receipt_url( string $intent, string $account ): string {
-		return (string) ( $this->charge_for_intent( $intent, $account )['receipt_url'] ?? '' );
+		return Fields::string( $this->charge_for_intent( $intent, $account )['receipt_url'] ?? null );
 	}
 
 	/**
@@ -310,17 +317,17 @@ class Client {
 	 * @since 1.2.0
 	 *
 	 * @param string      $intent  Payment intent id.
-	 * @param string|null $account Connected account id, or null.
+	 * @param string|null  $account Connected account id, or null.
 	 *
-	 * @return array|null The latest charge, or null when there is none yet
-	 *                    or Stripe could not be asked.
+	 * @return array<mixed>|null The latest charge, or null when there is
+	 *                           none yet or Stripe could not be asked.
 	 */
 	public function charge_for_intent( string $intent, ?string $account = null ): ?array {
 		if ( '' === $intent ) {
 			return null;
 		}
 
-		$charge = $this->get( 'charges', $account, array( 'payment_intent' => $intent, 'limit' => 1 ) )['data'][0] ?? null;
+		$charge = Fields::at( $this->get( 'charges', $account, array( 'payment_intent' => $intent, 'limit' => 1 ) ), 'data', 0 );
 
 		return is_array( $charge ) ? $charge : null;
 	}
@@ -336,7 +343,7 @@ class Client {
 	 *
 	 * @param string      $customer   Customer id.
 	 * @param string      $return_url Where the portal's "return" link goes.
-	 * @param string|null $account    Connected account id, or null for the
+	 * @param string|null  $account    Connected account id, or null for the
 	 *                                platform's own customers.
 	 *
 	 * @return string The URL, or '' when Stripe would not open one.
@@ -351,7 +358,7 @@ class Client {
 			'return_url' => $return_url,
 		), $account );
 
-		return (string) ( $session['url'] ?? '' );
+		return Fields::string( $session['url'] ?? null );
 	}
 
 	/**
@@ -360,16 +367,35 @@ class Client {
 	 * Protected so a subclass that sends something this class does not can
 	 * build the same request, against the same pinned version.
 	 *
+	 * Every segment of the path has to be a plain name or id. A caller that
+	 * builds `'prices/' . $id` from a buyer's request would otherwise send
+	 * `prices/../customers/cus_1` — which the HTTP layer collapses to
+	 * `customers/cus_1` — or `prices/x?expand[]=…`, and act with the platform
+	 * key on an endpoint it never named.
+	 *
 	 * @since 1.0.0
 	 * @since 1.2.0 Protected.
+	 * @since 1.5.0 Refuses a path segment that is not a name or an id.
 	 *
-	 * @param string $path  Path below /v1.
-	 * @param array  $query Query parameters.
+	 * @param string       $path  Path below /v1.
+	 * @param array<mixed> $query Query parameters.
 	 *
 	 * @return string
+	 *
+	 * @throws \InvalidArgumentException On a path with an empty segment, or
+	 *                                   one that is not letters, digits,
+	 *                                   underscores and hyphens.
 	 */
 	protected function url( string $path, array $query = array() ): string {
-		$url = self::BASE . '/' . ltrim( $path, '/' );
+		$path = trim( $path, '/' );
+
+		foreach ( explode( '/', $path ) as $segment ) {
+			if ( 1 !== preg_match( self::SEGMENT, $segment ) ) {
+				throw new \InvalidArgumentException( 'Not a Stripe API path: ' . var_export( $path, true ) );
+			}
+		}
+
+		$url = self::BASE . '/' . $path;
 
 		return $query ? $url . '?' . http_build_query( $query ) : $url;
 	}
@@ -380,7 +406,7 @@ class Client {
 	 * @since 1.0.0
 	 * @since 1.2.0 Protected.
 	 *
-	 * @param string|null $account Connected account id, or null.
+	 * @param string|null  $account Connected account id, or null.
 	 *
 	 * @return array<string, string>
 	 */
@@ -398,17 +424,56 @@ class Client {
 	}
 
 	/**
-	 * Send a form-encoded POST.
+	 * What a client like this shows var_dump() and print_r(): not its key.
 	 *
-	 * @param string      $path    Path below /v1.
-	 * @param array       $params  Parameters.
-	 * @param string|null $account Connected account id, or null.
+	 * `#[\SensitiveParameter]` keeps the key out of stack traces only. A
+	 * client dumped into a log or an error page — or a Keyring, which holds
+	 * three — would otherwise print every secret key in full.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @return array{configured: bool, api_version: string}
+	 */
+	public function __debugInfo(): array {
+		return array( 'configured' => $this->configured(), 'api_version' => self::API_VERSION );
+	}
+
+	/**
+	 * Send a GET, or a form-encoded POST when there are parameters.
+	 *
+	 * A path or account id that could not be Stripe's is answered here, as a
+	 * failed response that was never sent, so it fails the way an outage
+	 * does: null from get() and post(), a StripeError from fetch() and
+	 * attempt().
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string            $path    Path below /v1.
+	 * @param string|null       $account Connected account id, or null.
+	 * @param array<mixed>      $query   Query parameters.
+	 * @param array<mixed>|null $params  POST parameters, or null for a GET.
 	 *
 	 * @return Response
 	 */
-	private function send( string $path, array $params, ?string $account ): Response {
+	private function call( string $path, ?string $account, array $query = array(), ?array $params = null ): Response {
+		// Stripe-Account is a header; an id with anything else in it is not
+		// an account, and is not sent on to name one.
+		if ( null !== $account && 1 !== preg_match( '/^acct_[A-Za-z0-9_]+$/', $account ) ) {
+			return Response::failure( 'not a Stripe account id' );
+		}
+
+		try {
+			$url = $this->url( $path, $query );
+		} catch ( \InvalidArgumentException $e ) {
+			return Response::failure( $e->getMessage() );
+		}
+
+		if ( null === $params ) {
+			return $this->http->get( $url, $this->headers( $account ) );
+		}
+
 		return $this->http->post(
-			$this->url( $path ),
+			$url,
 			http_build_query( $params ),
 			$this->headers( $account ) + array( 'Content-Type' => 'application/x-www-form-urlencoded' )
 		);
@@ -420,7 +485,7 @@ class Client {
 	 * @param string   $path     Path below /v1, for the error.
 	 * @param Response $response What came back.
 	 *
-	 * @return array
+	 * @return array<mixed>
 	 *
 	 * @throws StripeError When it is not an answer.
 	 */
@@ -439,7 +504,7 @@ class Client {
 	 *
 	 * @param Response $response What came back.
 	 *
-	 * @return array|null
+	 * @return array<mixed>|null
 	 */
 	private function unwrap( Response $response ): ?array {
 		if ( ! $response->ok ) {

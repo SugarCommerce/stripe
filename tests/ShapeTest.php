@@ -270,4 +270,25 @@ final class ShapeTest extends TestCase {
 		$this->assertSame( array( 'usd', 'eur' ), Shape::currencies( array( 'currency' => 'USD', 'currency_options' => array( 'eur' => array(), 'usd' => array() ) ) ) );
 		$this->assertSame( array(), Shape::currencies( array() ) );
 	}
+
+	/* ─── Loose input (1.5.0) ───────────────────────────────────────── */
+
+	/**
+	 * A field of the wrong type reads as absent, not as "Array" with a
+	 * warning, and not as 0 where 0 would mean free.
+	 */
+	public function test_a_field_of_the_wrong_type_reads_as_absent(): void {
+		$price = Shape::price( array( 'id' => array( 'price_1' ), 'currency' => array( 'usd' ), 'unit_amount' => 'twelve', 'recurring' => 'month' ) );
+
+		$this->assertSame( '', $price['id'] );
+		$this->assertSame( '', $price['currency'] );
+		$this->assertNull( $price['amount'] );
+		$this->assertSame( '', $price['recurring'] );
+		$this->assertSame( 1200, Shape::price( array( 'unit_amount' => '1200' ) )['amount'] );
+	}
+
+	public function test_nothing_refunded_is_not_a_full_refund(): void {
+		$this->assertFalse( Shape::fully_refunded( array( 'amount' => 0, 'amount_refunded' => 0, 'refunded' => false ) ) );
+		$this->assertTrue( Shape::fully_refunded( array( 'amount' => 500, 'amount_refunded' => 500 ) ) );
+	}
 }
