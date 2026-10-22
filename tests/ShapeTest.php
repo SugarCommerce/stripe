@@ -144,7 +144,8 @@ final class ShapeTest extends TestCase {
 	public function test_a_session_is_paid_only_when_the_money_is_in(): void {
 		$this->assertTrue( Shape::session_paid( array( 'payment_status' => 'paid' ) ) );
 		$this->assertTrue( Shape::session_paid( array( 'payment_status' => 'no_payment_required' ) ) );
-		$this->assertTrue( Shape::session_paid( array() ), 'Older payloads carry no status and were paid.' );
+		$this->assertFalse( Shape::session_paid( array() ), 'No status is not proof of payment.' );
+		$this->assertFalse( Shape::session_paid( array( 'payment_status' => null ) ) );
 		$this->assertFalse( Shape::session_paid( array( 'payment_status' => 'unpaid' ) ) );
 	}
 

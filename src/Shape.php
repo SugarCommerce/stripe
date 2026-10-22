@@ -331,17 +331,22 @@ final class Shape {
 	 * delayed-notification method completes the session immediately and
 	 * settles days later; `async_payment_succeeded` is the event that says
 	 * it did. A session with nothing to pay — a free trial, a 100% coupon —
-	 * is as paid as it will ever be. A payload with no `payment_status` at
-	 * all predates the field and was paid.
+	 * is as paid as it will ever be.
+	 *
+	 * A payload with no `payment_status` is not paid. Every API version a
+	 * Connect platform can receive carries the field; one without it is a
+	 * hand-made or truncated payload, and reading that as paid hands over
+	 * what was bought for money nobody has seen.
 	 *
 	 * @since 1.2.0
+	 * @since 1.5.0 A missing `payment_status` is unpaid, not paid.
 	 *
 	 * @param array<mixed> $session Checkout Session.
 	 *
 	 * @return bool
 	 */
 	public static function session_paid( array $session ): bool {
-		return in_array( $session['payment_status'] ?? 'paid', array( 'paid', 'no_payment_required' ), true );
+		return in_array( $session['payment_status'] ?? null, array( 'paid', 'no_payment_required' ), true );
 	}
 
 	/**
